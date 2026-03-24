@@ -204,6 +204,14 @@ func (h *Handler) Responses(c *gin.Context) {
 		codexBody, _ = sjson.SetBytes(codexBody, "include", []string{"reasoning.encrypted_content"})
 	}
 
+	// 自动将字符串 input 包装为数组格式（Codex 要求 input 为 list）
+	inputResult := gjson.GetBytes(codexBody, "input")
+	if inputResult.Exists() && inputResult.Type == gjson.String {
+		codexBody, _ = sjson.SetBytes(codexBody, "input", []map[string]string{
+			{"role": "user", "content": inputResult.String()},
+		})
+	}
+
 	// 删除 Codex 不支持的参数（客户端可能传入）
 	unsupportedFields := []string{
 		"max_output_tokens", "max_tokens", "max_completion_tokens",
