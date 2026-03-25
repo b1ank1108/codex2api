@@ -21,6 +21,8 @@ import type { UsageLog } from '../types'
 
 interface DashboardUsageChartsProps {
   logs: UsageLog[]
+  refreshedAt: number | null
+  refreshIntervalMs: number
 }
 
 interface TimelinePoint {
@@ -56,9 +58,13 @@ const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: 'compact',
   maximumFractionDigits: 1,
 })
+const LIVE_BUCKET_MINUTES = 5
+const LIVE_BUCKET_COUNT = 24
 
-export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps) {
+export default function DashboardUsageCharts({ logs, refreshedAt, refreshIntervalMs }: DashboardUsageChartsProps) {
   const { t } = useTranslation()
+  const liveWindowHours = (LIVE_BUCKET_COUNT * LIVE_BUCKET_MINUTES) / 60
+  const lastUpdatedAtLabel = formatClockTime(refreshedAt)
 
   const chartData = useMemo(() => {
     const parsedLogs = logs
@@ -78,19 +84,18 @@ export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps
       }
     }
 
-    const latestBucketEnd = new Date(parsedLogs[parsedLogs.length - 1].createdAt)
-    latestBucketEnd.setMinutes(0, 0, 0)
-    latestBucketEnd.setHours(latestBucketEnd.getHours() + 1)
+    const referenceDate = refreshedAt ? new Date(refreshedAt) : parsedLogs[parsedLogs.length - 1].createdAt
+    const latestBucketEnd = ceilDateToBucket(referenceDate, LIVE_BUCKET_MINUTES)
 
-    const bucketMs = 60 * 60 * 1000
-    const bucketCount = 24
+    const bucketMs = LIVE_BUCKET_MINUTES * 60 * 1000
+    const bucketCount = LIVE_BUCKET_COUNT
     const windowStart = latestBucketEnd.getTime() - bucketCount * bucketMs
 
     const timelineData: TimelinePoint[] = Array.from({ length: bucketCount }, (_, index) => {
       const bucketDate = new Date(windowStart + index * bucketMs)
       return {
-        label: formatHourLabel(bucketDate),
-        fullLabel: formatFullHourLabel(bucketDate),
+        label: formatMinuteLabel(bucketDate),
+        fullLabel: formatFullMinuteLabel(bucketDate),
         requests: 0,
         avgLatency: null,
         inputTokens: 0,
@@ -157,16 +162,30 @@ export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps
       modelData,
       sampleCount: windowLogs.length,
     }
-  }, [logs, t])
+  }, [logs, refreshedAt, t])
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-base font-semibold text-foreground">{t('dashboard.usageCharts')}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.usageChartsDesc', { count: chartData.sampleCount.toLocaleString() })}</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">{t('dashboard.usageCharts')}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.usageChartsDesc', { count: chartData.sampleCount.toLocaleString() })}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t('dashboard.liveWindowDesc', {
+              hours: liveWindowHours,
+              minutes: LIVE_BUCKET_MINUTES,
+              seconds: Math.round(refreshIntervalMs / 1000),
+              time: lastUpdatedAtLabel,
+            })}
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-300">
+          <span className="size-2 rounded-full bg-current animate-pulse" />
+          <span>{t('dashboard.liveBadge')}</span>
+        </div>
       </div>
 
-      {chartData.timelineData.length === 0 ? (
+      {chartData.sampleCount === 0 ? (
         <Card>
           <CardContent className="p-6">
             <StateShell
@@ -191,7 +210,7 @@ export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="4 4" />
-                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
+                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} minTickGap={20} tickMargin={8} />
                 <YAxis tickFormatter={formatCompactNumber} tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} allowDecimals={false} />
                 <Tooltip
                   formatter={(value) => formatNumber(value)}
@@ -216,7 +235,7 @@ export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData.timelineData} margin={chartMargin}>
                 <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="4 4" />
-                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
+                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} minTickGap={20} tickMargin={8} />
                 <YAxis tickFormatter={formatDurationTick} tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} width={54} />
                 <Tooltip
                   formatter={(value) => formatDuration(value)}
@@ -243,7 +262,7 @@ export default function DashboardUsageCharts({ logs }: DashboardUsageChartsProps
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData.timelineData} margin={chartMargin}>
                 <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="4 4" />
-                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
+                <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} minTickGap={20} tickMargin={8} />
                 <YAxis tickFormatter={formatCompactNumber} tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
                 <Tooltip
                   formatter={(value) => formatNumber(value)}
@@ -305,15 +324,34 @@ function parseUsageDate(value: string): Date | null {
   return parsed
 }
 
-function formatHourLabel(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:00`
+function ceilDateToBucket(date: Date, bucketMinutes: number): Date {
+  const bucketMs = bucketMinutes * 60 * 1000
+  return new Date(Math.ceil(date.getTime() / bucketMs) * bucketMs)
 }
 
-function formatFullHourLabel(date: Date): string {
+function formatMinuteLabel(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+function formatFullMinuteLabel(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const hour = String(date.getHours()).padStart(2, '0')
-  return `${month}-${day} ${hour}:00`
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hour}:${minute}`
+}
+
+function formatClockTime(value: number | null): string {
+  if (!value) return '--:--:--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--:--:--'
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
 }
 
 function truncateLabel(value: string, maxLength: number): string {

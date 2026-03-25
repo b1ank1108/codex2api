@@ -32,11 +32,11 @@ func getPooledClient(proxyURL string) *http.Client {
 
 	transport := &http.Transport{
 		// 连接池配置
-		MaxIdleConns:        400,               // 全局最大空闲连接
-		MaxIdleConnsPerHost: 200,               // 每个 Host 最大空闲连接（chatgpt.com 只有 1 个 host）
-		MaxConnsPerHost:     400,               // 每个 Host 最大并发连接
-		IdleConnTimeout:     90 * time.Second,  // 空闲连接超时
-		TLSHandshakeTimeout: 10 * time.Second,  // TLS 握手超时
+		MaxIdleConns:        400,              // 全局最大空闲连接
+		MaxIdleConnsPerHost: 200,              // 每个 Host 最大空闲连接（chatgpt.com 只有 1 个 host）
+		MaxConnsPerHost:     400,              // 每个 Host 最大并发连接
+		IdleConnTimeout:     90 * time.Second, // 空闲连接超时
+		TLSHandshakeTimeout: 10 * time.Second, // TLS 握手超时
 		// Keep-Alive
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
@@ -99,6 +99,7 @@ func ExecuteRequest(account *auth.Account, requestBody []byte, sessionID string)
 	requestBody, _ = sjson.DeleteBytes(requestBody, "previous_response_id")
 	requestBody, _ = sjson.DeleteBytes(requestBody, "prompt_cache_retention")
 	requestBody, _ = sjson.DeleteBytes(requestBody, "safety_identifier")
+	requestBody, _ = sjson.DeleteBytes(requestBody, "disable_response_storage")
 
 	// 3. 注入 prompt_cache_key（如果请求体中没有，且 sessionID 不为空）
 	existingCacheKey := strings.TrimSpace(gjson.GetBytes(requestBody, "prompt_cache_key").String())

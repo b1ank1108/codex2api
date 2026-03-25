@@ -32,6 +32,7 @@ func TranslateRequest(rawJSON []byte) ([]byte, error) {
 		"frequency_penalty", "presence_penalty", "logprobs", "top_logprobs",
 		"n", "seed", "stop", "user", "logit_bias", "response_format",
 		"service_tier", "stream_options", "truncation", "context_management",
+		"disable_response_storage",
 	}
 	for _, field := range unsupportedFields {
 		result, _ = sjson.DeleteBytes(result, field)

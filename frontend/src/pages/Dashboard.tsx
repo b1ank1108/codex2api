@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import DashboardUsageCharts from '../components/DashboardUsageCharts'
@@ -10,6 +10,8 @@ import type { StatsResponse, UsageLog, UsageStats } from '../types'
 import { useDataLoader } from '../hooks/useDataLoader'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, CheckCircle, XCircle, Activity, Zap, Clock, AlertTriangle, BarChart3, Database } from 'lucide-react'
+
+const DASHBOARD_REFRESH_INTERVAL_MS = 15_000
 
 export default function Dashboard() {
   const { t } = useTranslation()
@@ -23,19 +25,30 @@ export default function Dashboard() {
       stats,
       usageStats,
       logs: usageLogsResponse.logs ?? [],
+      refreshedAt: Date.now(),
     }
   }, [])
 
-  const { data, loading, error, reload } = useDataLoader<{
+  const { data, loading, error, reload, reloadSilently } = useDataLoader<{
     stats: StatsResponse | null
     usageStats: UsageStats | null
     logs: UsageLog[]
+    refreshedAt: number | null
   }>({
-    initialData: { stats: null, usageStats: null, logs: [] },
+    initialData: { stats: null, usageStats: null, logs: [], refreshedAt: null },
     load: loadDashboardData,
   })
 
-  const { stats, usageStats, logs } = data
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void reloadSilently()
+    }, DASHBOARD_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(timer)
+  }, [reloadSilently])
+
+  const { stats, usageStats, logs, refreshedAt } = data
   const total = stats?.total ?? 0
   const available = stats?.available ?? 0
   const errorCount = stats?.error ?? 0
@@ -101,7 +114,7 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-            <DashboardUsageCharts logs={logs} />
+            <DashboardUsageCharts logs={logs} refreshedAt={refreshedAt} refreshIntervalMs={DASHBOARD_REFRESH_INTERVAL_MS} />
           </div>
         )}
       </>
