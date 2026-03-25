@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Globe, Plus, Trash2, TestTube, MapPin, Loader2, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Globe, Plus, Trash2, Play, MapPin, Loader2, Zap, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { api, type ProxyRow, type ProxyTestResult } from '../api'
 
@@ -315,7 +315,6 @@ export default function Proxies() {
                         <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="size-4 rounded" />
                       </th>
                       <th className="p-3 font-semibold">代理 URL</th>
-                      <th className="p-3 font-semibold">标签</th>
                       <th className="p-3 font-semibold">状态</th>
                       <th className="p-3 font-semibold">地址</th>
                       <th className="p-3 font-semibold">IP</th>
@@ -341,14 +340,7 @@ export default function Proxies() {
                               className="size-4 rounded"
                             />
                           </td>
-                          <td className="p-3 font-mono text-[13px] font-semibold break-all max-w-[320px] text-foreground">{p.url}</td>
-                          <td className="p-3">
-                            {p.label ? (
-                              <span className="inline-flex px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">{p.label}</span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">-</span>
-                            )}
-                          </td>
+                          <td className="p-3 font-mono text-[20px] font-bold break-all max-w-[380px] text-foreground">{p.url}</td>
                           <td className="p-3">
                             <button
                               onClick={() => handleToggle(p)}
@@ -378,7 +370,7 @@ export default function Proxies() {
                           {/* IP */}
                           <td className="p-3">
                             {p.test_ip ? (
-                              <span className="text-xs font-mono text-foreground">{p.test_ip}</span>
+                              <span className="text-[20px] font-mono font-bold text-foreground">{p.test_ip}</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">-</span>
                             )}
@@ -401,7 +393,7 @@ export default function Proxies() {
                                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-foreground hover:bg-muted/50 transition-all disabled:opacity-50"
                                 title="测试代理"
                               >
-                                {isTesting ? <Loader2 className="size-3.5 animate-spin" /> : <TestTube className="size-3.5" />}
+                                {isTesting ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
                                 测试
                               </button>
                               <button
