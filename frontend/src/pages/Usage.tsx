@@ -79,38 +79,51 @@ export default function Usage() {
   const { confirm, confirmDialog } = useConfirmDialog()
   const [page, setPage] = useState(1)
   const [clearing, setClearing] = useState(false)
-  const [timeRange, setTimeRange] = useState<TimeRangeKey>('24h')
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h')
+  const [logs, setLogs] = useState<UsageLog[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
   const PAGE_SIZE = 20
 
-  const loadUsageData = useCallback(async () => {
-    const { start, end } = getTimeRangeISO(timeRange)
-    const [stats, logsResponse] = await Promise.all([api.getUsageStats(), api.getUsageLogs({ start, end })])
-    return {
-      stats,
-      logs: logsResponse.logs ?? [],
-    }
-  }, [timeRange])
+  // 仅加载轻量统计（秒级）
+  const loadStats = useCallback(async () => {
+    const stats = await api.getUsageStats()
+    return { stats }
+  }, [])
 
   const { data, loading, error, reload, reloadSilently } = useDataLoader<{
     stats: UsageStats | null
-    logs: UsageLog[]
   }>({
-    initialData: {
-      stats: null,
-      logs: [],
-    },
-    load: loadUsageData,
+    initialData: { stats: null },
+    load: loadStats,
   })
+
+  // 日志独立异步加载（不阻塞统计卡片渲染）
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true)
+    try {
+      const { start, end } = getTimeRangeISO(timeRange)
+      const res = await api.getUsageLogs({ start, end })
+      setLogs(res.logs ?? [])
+    } catch {
+      // 静默容错
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [timeRange])
+
+  // 首次加载 + timeRange 变更时重新拉取日志
+  useEffect(() => {
+    void loadLogs()
+  }, [loadLogs])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       void reloadSilently()
     }, 30000)
-
     return () => window.clearInterval(timer)
   }, [reloadSilently])
 
-  const { stats, logs } = data
+  const { stats } = data
   const totalPages = Math.max(1, Math.ceil(logs.length / PAGE_SIZE))
   const pagedLogs = useMemo(() => logs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [logs, page])
   const totalRequests = stats?.total_requests ?? 0
@@ -129,16 +142,16 @@ export default function Usage() {
       variant="page"
       loading={loading}
       error={error}
-      onRetry={() => void reload()}
+      onRetry={() => { void reload(); void loadLogs() }}
       loadingTitle="正在加载使用统计"
-      loadingDescription="请求日志和性能指标正在同步。"
+      loadingDescription="性能指标正在同步。"
       errorTitle="统计页加载失败"
     >
       <>
         <PageHeader
           title="使用统计"
           description="请求日志与性能指标"
-          onRefresh={() => void reload()}
+          onRefresh={() => { void reload(); void loadLogs() }}
         />
 
         {/* Top stats: 2 columns */}
@@ -252,7 +265,7 @@ export default function Usage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">{logs.length} 条记录</span>
+                <span className="text-xs text-muted-foreground">{logsLoading ? '加载中…' : `${logs.length} 条记录`}</span>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -272,6 +285,7 @@ export default function Usage() {
                       showToast('日志已清空')
                       setPage(1)
                       void reload()
+                      void loadLogs()
                     } catch (e) {
                       showToast(`清空失败: ${String(e)}`, 'error')
                     } finally {
