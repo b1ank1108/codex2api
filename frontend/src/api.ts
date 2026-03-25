@@ -11,6 +11,7 @@ import type {
   StatsResponse,
   SystemSettings,
   UsageLogsResponse,
+  UsageLogsPagedResponse,
   UsageStats,
 } from './types'
 
@@ -90,6 +91,14 @@ export const api = {
       searchParams.set('limit', String(params.limit))
     }
     return request<UsageLogsResponse>(`/usage/logs?${searchParams.toString()}`)
+  },
+  getUsageLogsPaged: (params: { start: string; end: string; page: number; pageSize?: number }) => {
+    const searchParams = new URLSearchParams()
+    searchParams.set('start', params.start)
+    searchParams.set('end', params.end)
+    searchParams.set('page', String(params.page))
+    if (params.pageSize) searchParams.set('page_size', String(params.pageSize))
+    return request<UsageLogsPagedResponse>(`/usage/logs?${searchParams.toString()}`)
   },
   getAPIKeys: () => request<APIKeysResponse>('/keys'),
   createAPIKey: (name: string, key?: string) =>

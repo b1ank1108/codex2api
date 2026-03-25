@@ -179,6 +179,11 @@ export interface UsageLog {
 
 export type UsageLogsResponse = ApiListResponse<'logs', UsageLog>
 
+export interface UsageLogsPagedResponse {
+  logs: UsageLog[]
+  total: number
+}
+
 export interface APIKeyRow {
   id: number
   name: string

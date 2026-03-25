@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
 import { getTimeRangeISO } from '../components/DashboardUsageCharts'
@@ -81,6 +81,7 @@ export default function Usage() {
   const [clearing, setClearing] = useState(false)
   const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h')
   const [logs, setLogs] = useState<UsageLog[]>([])
+  const [logsTotal, setLogsTotal] = useState(0)
   const [logsLoading, setLogsLoading] = useState(false)
   const PAGE_SIZE = 20
 
@@ -97,21 +98,22 @@ export default function Usage() {
     load: loadStats,
   })
 
-  // 日志独立异步加载（不阻塞统计卡片渲染）
+  // 服务端分页加载日志（每页仅传输 20 行）
   const loadLogs = useCallback(async () => {
     setLogsLoading(true)
     try {
       const { start, end } = getTimeRangeISO(timeRange)
-      const res = await api.getUsageLogs({ start, end })
+      const res = await api.getUsageLogsPaged({ start, end, page, pageSize: PAGE_SIZE })
       setLogs(res.logs ?? [])
+      setLogsTotal(res.total ?? 0)
     } catch {
       // 静默容错
     } finally {
       setLogsLoading(false)
     }
-  }, [timeRange])
+  }, [timeRange, page])
 
-  // 首次加载 + timeRange 变更时重新拉取日志
+  // 首次加载 + timeRange/page 变更时重新拉取日志
   useEffect(() => {
     void loadLogs()
   }, [loadLogs])
@@ -124,8 +126,7 @@ export default function Usage() {
   }, [reloadSilently])
 
   const { stats } = data
-  const totalPages = Math.max(1, Math.ceil(logs.length / PAGE_SIZE))
-  const pagedLogs = useMemo(() => logs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [logs, page])
+  const totalPages = Math.max(1, Math.ceil(logsTotal / PAGE_SIZE))
   const totalRequests = stats?.total_requests ?? 0
   const totalTokens = stats?.total_tokens ?? 0
   const totalPromptTokens = stats?.total_prompt_tokens ?? 0
@@ -265,7 +266,7 @@ export default function Usage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">{logsLoading ? '加载中…' : `${logs.length} 条记录`}</span>
+                <span className="text-xs text-muted-foreground">{logsLoading ? '加载中…' : `${logsTotal} 条记录`}</span>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -320,7 +321,7 @@ export default function Usage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pagedLogs.map((log) => {
+                    {logs.map((log: UsageLog) => {
                       return (
                       <TableRow key={log.id}>
                         <TableCell>
@@ -432,7 +433,7 @@ export default function Usage() {
                 page={page}
                 totalPages={totalPages}
                 onPageChange={setPage}
-                totalItems={logs.length}
+                totalItems={logsTotal}
                 pageSize={PAGE_SIZE}
               />
             </StateShell>

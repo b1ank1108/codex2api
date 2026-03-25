@@ -564,9 +564,6 @@ func (h *Handler) GetUsageLogs(c *gin.Context) {
 	startStr := c.Query("start")
 	endStr := c.Query("end")
 
-	var logs []*database.UsageLog
-	var err error
-
 	if startStr != "" && endStr != "" {
 		startTime, e1 := time.Parse(time.RFC3339, startStr)
 		endTime, e2 := time.Parse(time.RFC3339, endStr)
@@ -574,17 +571,46 @@ func (h *Handler) GetUsageLogs(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "start/end 参数格式错误，需要 RFC3339 格式")
 			return
 		}
-		logs, err = h.db.ListUsageLogsByTimeRange(ctx, startTime, endTime)
-	} else {
-		limit := 50
-		if l := c.Query("limit"); l != "" {
-			if n, err := strconv.Atoi(l); err == nil && n > 0 {
-				limit = n
+
+		// 有 page 参数 → 服务端分页（Usage 页面表格）
+		if pageStr := c.Query("page"); pageStr != "" {
+			page, _ := strconv.Atoi(pageStr)
+			pageSize := 20
+			if ps := c.Query("page_size"); ps != "" {
+				if n, err := strconv.Atoi(ps); err == nil && n > 0 && n <= 200 {
+					pageSize = n
+				}
 			}
+			result, err := h.db.ListUsageLogsByTimeRangePaged(ctx, startTime, endTime, page, pageSize)
+			if err != nil {
+				writeInternalError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, result)
+			return
 		}
-		logs, err = h.db.ListRecentUsageLogs(ctx, limit)
+
+		// 无 page 参数 → 返回全量（Dashboard 图表聚合）
+		logs, err := h.db.ListUsageLogsByTimeRange(ctx, startTime, endTime)
+		if err != nil {
+			writeInternalError(c, err)
+			return
+		}
+		if logs == nil {
+			logs = []*database.UsageLog{}
+		}
+		c.JSON(http.StatusOK, usageLogsResponse{Logs: logs})
+		return
 	}
 
+	// 回退：limit 模式
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	logs, err := h.db.ListRecentUsageLogs(ctx, limit)
 	if err != nil {
 		writeInternalError(c, err)
 		return

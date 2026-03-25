@@ -528,32 +528,28 @@ type TrafficSnapshot struct {
 func (db *DB) GetUsageStats(ctx context.Context) (*UsageStats, error) {
 	stats := &UsageStats{}
 
-	// 合并为单条 SQL：使用条件聚合（FILTER 子句），一次扫描完成所有统计
-	query := `
+	// 只扫描今日数据（走 idx_usage_logs_created_at 索引，极快）
+	todayQuery := `
 	SELECT
-		-- 总量
-		COUNT(*)                                                     AS total_requests,
-		COALESCE(SUM(total_tokens), 0)                               AS total_tokens,
-		COALESCE(SUM(prompt_tokens), 0)                              AS total_prompt,
-		COALESCE(SUM(completion_tokens), 0)                          AS total_completion,
-		COALESCE(SUM(cached_tokens), 0)                              AS total_cached,
-		-- 今日
-		COUNT(*)    FILTER (WHERE created_at >= CURRENT_DATE)        AS today_requests,
-		COALESCE(SUM(total_tokens) FILTER (WHERE created_at >= CURRENT_DATE), 0) AS today_tokens,
+		COUNT(*)                                                     AS today_requests,
+		COALESCE(SUM(total_tokens), 0)                               AS today_tokens,
+		COALESCE(SUM(prompt_tokens), 0)                              AS today_prompt,
+		COALESCE(SUM(completion_tokens), 0)                          AS today_completion,
+		COALESCE(SUM(cached_tokens), 0)                              AS today_cached,
 		-- RPM / TPM（最近 1 分钟）
 		COUNT(*)    FILTER (WHERE created_at >= NOW() - INTERVAL '1 minute')     AS rpm,
 		COALESCE(SUM(total_tokens) FILTER (WHERE created_at >= NOW() - INTERVAL '1 minute'), 0) AS tpm,
 		-- 平均延迟（今日）
-		COALESCE(AVG(duration_ms) FILTER (WHERE created_at >= CURRENT_DATE), 0)  AS avg_duration_ms,
+		COALESCE(AVG(duration_ms), 0)                                AS avg_duration_ms,
 		-- 今日错误数
-		COUNT(*)    FILTER (WHERE created_at >= CURRENT_DATE AND status_code >= 400) AS today_errors
+		COUNT(*)    FILTER (WHERE status_code >= 400)                AS today_errors
 	FROM usage_logs
+	WHERE created_at >= CURRENT_DATE
 	`
 
 	var todayErrors int64
-	err := db.conn.QueryRowContext(ctx, query).Scan(
-		&stats.TotalRequests, &stats.TotalTokens, &stats.TotalPrompt, &stats.TotalCompletion, &stats.TotalCachedTokens,
-		&stats.TodayRequests, &stats.TodayTokens,
+	err := db.conn.QueryRowContext(ctx, todayQuery).Scan(
+		&stats.TodayRequests, &stats.TodayTokens, &stats.TotalPrompt, &stats.TotalCompletion, &stats.TotalCachedTokens,
 		&stats.RPM, &stats.TPM,
 		&stats.AvgDurationMs,
 		&todayErrors,
@@ -562,6 +558,12 @@ func (db *DB) GetUsageStats(ctx context.Context) (*UsageStats, error) {
 		return nil, err
 	}
 
+	// 用 pg_class.reltuples 快速获取近似总行数（不扫描表，瞬时返回）
+	var approxTotal int64
+	_ = db.conn.QueryRowContext(ctx, `
+		SELECT COALESCE(reltuples::bigint, 0) FROM pg_class WHERE relname = 'usage_logs'
+	`).Scan(&approxTotal)
+
 	// 加上基线值（清空日志前保存的累计值）
 	var bReq, bTok, bPrompt, bComp, bCached int64
 	_ = db.conn.QueryRowContext(ctx, `
@@ -569,8 +571,8 @@ func (db *DB) GetUsageStats(ctx context.Context) (*UsageStats, error) {
 		FROM usage_stats_baseline WHERE id = 1
 	`).Scan(&bReq, &bTok, &bPrompt, &bComp, &bCached)
 
-	stats.TotalRequests += bReq
-	stats.TotalTokens += bTok
+	stats.TotalRequests = approxTotal + bReq
+	stats.TotalTokens = stats.TodayTokens + bTok
 	stats.TotalPrompt += bPrompt
 	stats.TotalCompletion += bComp
 	stats.TotalCachedTokens += bCached
@@ -683,6 +685,55 @@ func (db *DB) ListUsageLogsByTimeRange(ctx context.Context, start, end time.Time
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
+}
+
+// UsageLogPage 分页日志结果
+type UsageLogPage struct {
+	Logs  []*UsageLog `json:"logs"`
+	Total int64       `json:"total"`
+}
+
+// ListUsageLogsByTimeRangePaged 按时间范围分页查询请求日志
+func (db *DB) ListUsageLogsByTimeRangePaged(ctx context.Context, start, end time.Time, page, pageSize int) (*UsageLogPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 200 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	query := `SELECT u.id, u.account_id, u.endpoint, u.model, u.prompt_tokens, u.completion_tokens, u.total_tokens, u.status_code, u.duration_ms,
+	            COALESCE(u.input_tokens, 0), COALESCE(u.output_tokens, 0), COALESCE(u.reasoning_tokens, 0),
+	            COALESCE(u.first_token_ms, 0), COALESCE(u.reasoning_effort, ''), COALESCE(u.inbound_endpoint, ''),
+	            COALESCE(u.upstream_endpoint, ''), COALESCE(u.stream, false), COALESCE(u.cached_tokens, 0),
+	            COALESCE(a.credentials->>'email', ''), u.created_at,
+	            COUNT(*) OVER() AS total_count
+	           FROM usage_logs u
+	           LEFT JOIN accounts a ON u.account_id = a.id
+	           WHERE u.created_at >= $1 AND u.created_at <= $2
+	           ORDER BY u.created_at DESC
+	           LIMIT $3 OFFSET $4`
+	rows, err := db.conn.QueryContext(ctx, query, start, end, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := &UsageLogPage{}
+	for rows.Next() {
+		l := &UsageLog{}
+		if err := rows.Scan(&l.ID, &l.AccountID, &l.Endpoint, &l.Model, &l.PromptTokens, &l.CompletionTokens, &l.TotalTokens, &l.StatusCode, &l.DurationMs,
+			&l.InputTokens, &l.OutputTokens, &l.ReasoningTokens, &l.FirstTokenMs, &l.ReasoningEffort, &l.InboundEndpoint, &l.UpstreamEndpoint, &l.Stream, &l.CachedTokens,
+			&l.AccountEmail, &l.CreatedAt, &result.Total); err != nil {
+			return nil, err
+		}
+		result.Logs = append(result.Logs, l)
+	}
+	if result.Logs == nil {
+		result.Logs = []*UsageLog{}
+	}
+	return result, rows.Err()
 }
 
 // ClearUsageLogs 清空所有使用日志（先快照累计值到基线表）
