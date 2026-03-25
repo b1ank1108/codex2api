@@ -76,7 +76,7 @@ export default function Usage() {
   const PAGE_SIZE = 20
 
   const loadUsageData = useCallback(async () => {
-    const [stats, logsResponse] = await Promise.all([api.getUsageStats(), api.getUsageLogs(5000)])
+    const [stats, logsResponse] = await Promise.all([api.getUsageStats(), api.getUsageLogs({ limit: 5000 })])
     return {
       stats,
       logs: logsResponse.logs ?? [],

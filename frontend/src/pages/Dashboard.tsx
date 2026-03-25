@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api'
-import DashboardUsageCharts from '../components/DashboardUsageCharts'
+import DashboardUsageCharts, { getTimeRangeISO } from '../components/DashboardUsageCharts'
+import type { TimeRangeKey } from '../components/DashboardUsageCharts'
 import PageHeader from '../components/PageHeader'
 import StateShell from '../components/StateShell'
 import StatCard from '../components/StatCard'
@@ -15,11 +16,14 @@ const DASHBOARD_REFRESH_INTERVAL_MS = 15_000
 
 export default function Dashboard() {
   const { t } = useTranslation()
+  const [timeRange, setTimeRange] = useState<TimeRangeKey>('1h')
+
   const loadDashboardData = useCallback(async () => {
+    const { start, end } = getTimeRangeISO(timeRange)
     const [stats, usageStats, usageLogsResponse] = await Promise.all([
       api.getStats(),
       api.getUsageStats(),
-      api.getUsageLogs(2000).catch(() => ({ logs: [] as UsageLog[] })),
+      api.getUsageLogs({ start, end }).catch(() => ({ logs: [] as UsageLog[] })),
     ])
     return {
       stats,
@@ -27,7 +31,7 @@ export default function Dashboard() {
       logs: usageLogsResponse.logs ?? [],
       refreshedAt: Date.now(),
     }
-  }, [])
+  }, [timeRange])
 
   const { data, loading, error, reload, reloadSilently } = useDataLoader<{
     stats: StatsResponse | null
@@ -39,14 +43,17 @@ export default function Dashboard() {
     load: loadDashboardData,
   })
 
+  // 仅在 1h（实时）模式下启用自动刷新
   useEffect(() => {
+    if (timeRange !== '1h') return
+
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void reloadSilently()
     }, DASHBOARD_REFRESH_INTERVAL_MS)
 
     return () => window.clearInterval(timer)
-  }, [reloadSilently])
+  }, [reloadSilently, timeRange])
 
   const { stats, usageStats, logs, refreshedAt } = data
   const total = stats?.total ?? 0
@@ -114,7 +121,13 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
-            <DashboardUsageCharts logs={logs} refreshedAt={refreshedAt} refreshIntervalMs={DASHBOARD_REFRESH_INTERVAL_MS} />
+            <DashboardUsageCharts
+              logs={logs}
+              refreshedAt={refreshedAt}
+              refreshIntervalMs={DASHBOARD_REFRESH_INTERVAL_MS}
+              timeRange={timeRange}
+              onTimeRangeChange={setTimeRange}
+            />
           </div>
         )}
       </>

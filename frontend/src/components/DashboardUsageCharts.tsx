@@ -19,10 +19,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import StateShell from './StateShell'
 import type { UsageLog } from '../types'
 
+export type TimeRangeKey = '1h' | '6h' | '24h' | '7d' | '30d'
+
 interface DashboardUsageChartsProps {
   logs: UsageLog[]
   refreshedAt: number | null
   refreshIntervalMs: number
+  timeRange: TimeRangeKey
+  onTimeRangeChange: (range: TimeRangeKey) => void
 }
 
 interface TimelinePoint {
@@ -58,12 +62,37 @@ const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: 'compact',
   maximumFractionDigits: 1,
 })
-const LIVE_BUCKET_MINUTES = 5
-const LIVE_BUCKET_COUNT = 24
 
-export default function DashboardUsageCharts({ logs, refreshedAt, refreshIntervalMs }: DashboardUsageChartsProps) {
+const TIME_RANGE_OPTIONS: TimeRangeKey[] = ['1h', '6h', '24h', '7d', '30d']
+
+/** 根据时间跨度计算桶大小（分钟）和桶数量 */
+function getBucketConfig(range: TimeRangeKey): { bucketMinutes: number; bucketCount: number } {
+  switch (range) {
+    case '1h':
+      return { bucketMinutes: 5, bucketCount: 12 }
+    case '6h':
+      return { bucketMinutes: 15, bucketCount: 24 }
+    case '24h':
+      return { bucketMinutes: 30, bucketCount: 48 }
+    case '7d':
+      return { bucketMinutes: 360, bucketCount: 28 }
+    case '30d':
+      return { bucketMinutes: 1440, bucketCount: 30 }
+    default:
+      return { bucketMinutes: 5, bucketCount: 12 }
+  }
+}
+
+export default function DashboardUsageCharts({
+  logs,
+  refreshedAt,
+  refreshIntervalMs,
+  timeRange,
+  onTimeRangeChange,
+}: DashboardUsageChartsProps) {
   const { t } = useTranslation()
-  const liveWindowHours = (LIVE_BUCKET_COUNT * LIVE_BUCKET_MINUTES) / 60
+  const { bucketMinutes, bucketCount } = getBucketConfig(timeRange)
+  const isLive = timeRange === '1h'
   const lastUpdatedAtLabel = formatClockTime(refreshedAt)
 
   const chartData = useMemo(() => {
@@ -85,17 +114,18 @@ export default function DashboardUsageCharts({ logs, refreshedAt, refreshInterva
     }
 
     const referenceDate = refreshedAt ? new Date(refreshedAt) : parsedLogs[parsedLogs.length - 1].createdAt
-    const latestBucketEnd = ceilDateToBucket(referenceDate, LIVE_BUCKET_MINUTES)
+    const latestBucketEnd = ceilDateToBucket(referenceDate, bucketMinutes)
 
-    const bucketMs = LIVE_BUCKET_MINUTES * 60 * 1000
-    const bucketCount = LIVE_BUCKET_COUNT
+    const bucketMs = bucketMinutes * 60 * 1000
     const windowStart = latestBucketEnd.getTime() - bucketCount * bucketMs
+
+    const useFullDate = bucketMinutes >= 360
 
     const timelineData: TimelinePoint[] = Array.from({ length: bucketCount }, (_, index) => {
       const bucketDate = new Date(windowStart + index * bucketMs)
       return {
-        label: formatMinuteLabel(bucketDate),
-        fullLabel: formatFullMinuteLabel(bucketDate),
+        label: useFullDate ? formatDateLabel(bucketDate, bucketMinutes) : formatMinuteLabel(bucketDate),
+        fullLabel: formatFullLabel(bucketDate, bucketMinutes),
         requests: 0,
         avgLatency: null,
         inputTokens: 0,
@@ -162,7 +192,7 @@ export default function DashboardUsageCharts({ logs, refreshedAt, refreshInterva
       modelData,
       sampleCount: windowLogs.length,
     }
-  }, [logs, refreshedAt, t])
+  }, [logs, refreshedAt, t, bucketMinutes, bucketCount])
 
   return (
     <div className="space-y-4">
@@ -170,18 +200,40 @@ export default function DashboardUsageCharts({ logs, refreshedAt, refreshInterva
         <div>
           <h3 className="text-base font-semibold text-foreground">{t('dashboard.usageCharts')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.usageChartsDesc', { count: chartData.sampleCount.toLocaleString() })}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('dashboard.liveWindowDesc', {
-              hours: liveWindowHours,
-              minutes: LIVE_BUCKET_MINUTES,
-              seconds: Math.round(refreshIntervalMs / 1000),
-              time: lastUpdatedAtLabel,
-            })}
-          </p>
+          {isLive && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('dashboard.liveWindowDesc', {
+                hours: (bucketCount * bucketMinutes) / 60,
+                minutes: bucketMinutes,
+                seconds: Math.round(refreshIntervalMs / 1000),
+                time: lastUpdatedAtLabel,
+              })}
+            </p>
+          )}
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-300">
-          <span className="size-2 rounded-full bg-current animate-pulse" />
-          <span>{t('dashboard.liveBadge')}</span>
+        <div className="flex items-center gap-2">
+          {isLive && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-300 mr-2">
+              <span className="size-2 rounded-full bg-current animate-pulse" />
+              <span>{t('dashboard.liveBadge')}</span>
+            </div>
+          )}
+          <div className="inline-flex rounded-lg border border-border bg-muted/50 p-0.5">
+            {TIME_RANGE_OPTIONS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onTimeRangeChange(key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
+                  timeRange === key
+                    ? 'bg-background text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t(`dashboard.timeRange${key.toUpperCase()}`)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -335,11 +387,24 @@ function formatMinuteLabel(date: Date): string {
   return `${hours}:${minutes}`
 }
 
-function formatFullMinuteLabel(date: Date): string {
+function formatDateLabel(date: Date, bucketMinutes: number): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  if (bucketMinutes >= 1440) {
+    return `${month}-${day}`
+  }
+  const hour = String(date.getHours()).padStart(2, '0')
+  return `${month}-${day} ${hour}:00`
+}
+
+function formatFullLabel(date: Date, bucketMinutes: number): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   const hour = String(date.getHours()).padStart(2, '0')
   const minute = String(date.getMinutes()).padStart(2, '0')
+  if (bucketMinutes >= 1440) {
+    return `${date.getFullYear()}-${month}-${day}`
+  }
   return `${month}-${day} ${hour}:${minute}`
 }
 
@@ -390,4 +455,32 @@ function getTooltipLabel(payload: readonly { payload?: Record<string, unknown> }
   const tooltipPayload = payload?.[0]?.payload
   const rawValue = tooltipPayload?.[key]
   return typeof rawValue === 'string' && rawValue ? rawValue : ''
+}
+
+/** 根据 TimeRangeKey 计算时间范围的起始 ISO 字符串 */
+export function getTimeRangeISO(range: TimeRangeKey): { start: string; end: string } {
+  const now = new Date()
+  const end = now.toISOString()
+  let offsetMs: number
+  switch (range) {
+    case '1h':
+      offsetMs = 60 * 60 * 1000
+      break
+    case '6h':
+      offsetMs = 6 * 60 * 60 * 1000
+      break
+    case '24h':
+      offsetMs = 24 * 60 * 60 * 1000
+      break
+    case '7d':
+      offsetMs = 7 * 24 * 60 * 60 * 1000
+      break
+    case '30d':
+      offsetMs = 30 * 24 * 60 * 60 * 1000
+      break
+    default:
+      offsetMs = 60 * 60 * 1000
+  }
+  const start = new Date(now.getTime() - offsetMs).toISOString()
+  return { start, end }
 }

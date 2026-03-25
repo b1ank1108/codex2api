@@ -558,17 +558,33 @@ func (h *Handler) GetUsageStats(c *gin.Context) {
 
 // GetUsageLogs 获取使用日志
 func (h *Handler) GetUsageLogs(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	limit := 50
-	if l := c.Query("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+
+	var logs []*database.UsageLog
+	var err error
+
+	if startStr != "" && endStr != "" {
+		startTime, e1 := time.Parse(time.RFC3339, startStr)
+		endTime, e2 := time.Parse(time.RFC3339, endStr)
+		if e1 != nil || e2 != nil {
+			writeError(c, http.StatusBadRequest, "start/end 参数格式错误，需要 RFC3339 格式")
+			return
 		}
+		logs, err = h.db.ListUsageLogsByTimeRange(ctx, startTime, endTime)
+	} else {
+		limit := 50
+		if l := c.Query("limit"); l != "" {
+			if n, err := strconv.Atoi(l); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		logs, err = h.db.ListRecentUsageLogs(ctx, limit)
 	}
 
-	logs, err := h.db.ListRecentUsageLogs(ctx, limit)
 	if err != nil {
 		writeInternalError(c, err)
 		return

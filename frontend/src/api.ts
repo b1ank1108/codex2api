@@ -81,7 +81,16 @@ export const api = {
   getHealth: () => request<HealthResponse>('/health'),
   getOpsOverview: () => request<OpsOverviewResponse>('/ops/overview'),
   getUsageStats: () => request<UsageStats>('/usage/stats'),
-  getUsageLogs: (limit = 50) => request<UsageLogsResponse>(`/usage/logs?limit=${limit}`),
+  getUsageLogs: (params: { start?: string; end?: string; limit?: number } = {}) => {
+    const searchParams = new URLSearchParams()
+    if (params.start && params.end) {
+      searchParams.set('start', params.start)
+      searchParams.set('end', params.end)
+    } else if (params.limit) {
+      searchParams.set('limit', String(params.limit))
+    }
+    return request<UsageLogsResponse>(`/usage/logs?${searchParams.toString()}`)
+  },
   getAPIKeys: () => request<APIKeysResponse>('/keys'),
   createAPIKey: (name: string, key?: string) =>
     request<CreateAPIKeyResponse>('/keys', {

@@ -655,6 +655,36 @@ func (db *DB) ListRecentUsageLogs(ctx context.Context, limit int) ([]*UsageLog, 
 	return logs, rows.Err()
 }
 
+// ListUsageLogsByTimeRange 按时间范围查询请求日志
+func (db *DB) ListUsageLogsByTimeRange(ctx context.Context, start, end time.Time) ([]*UsageLog, error) {
+	query := `SELECT u.id, u.account_id, u.endpoint, u.model, u.prompt_tokens, u.completion_tokens, u.total_tokens, u.status_code, u.duration_ms,
+	            COALESCE(u.input_tokens, 0), COALESCE(u.output_tokens, 0), COALESCE(u.reasoning_tokens, 0),
+	            COALESCE(u.first_token_ms, 0), COALESCE(u.reasoning_effort, ''), COALESCE(u.inbound_endpoint, ''),
+	            COALESCE(u.upstream_endpoint, ''), COALESCE(u.stream, false), COALESCE(u.cached_tokens, 0),
+	            COALESCE(a.credentials->>'email', ''), u.created_at
+	           FROM usage_logs u
+	           LEFT JOIN accounts a ON u.account_id = a.id
+	           WHERE u.created_at >= $1 AND u.created_at <= $2
+	           ORDER BY u.created_at ASC`
+	rows, err := db.conn.QueryContext(ctx, query, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*UsageLog
+	for rows.Next() {
+		l := &UsageLog{}
+		if err := rows.Scan(&l.ID, &l.AccountID, &l.Endpoint, &l.Model, &l.PromptTokens, &l.CompletionTokens, &l.TotalTokens, &l.StatusCode, &l.DurationMs,
+			&l.InputTokens, &l.OutputTokens, &l.ReasoningTokens, &l.FirstTokenMs, &l.ReasoningEffort, &l.InboundEndpoint, &l.UpstreamEndpoint, &l.Stream, &l.CachedTokens,
+			&l.AccountEmail, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
+}
+
 // ClearUsageLogs 清空所有使用日志（先快照累计值到基线表）
 func (db *DB) ClearUsageLogs(ctx context.Context) error {
 	// 先将当前日志的累计值叠加到基线表
