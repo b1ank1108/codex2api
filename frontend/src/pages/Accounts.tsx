@@ -25,13 +25,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Plus, RefreshCw, Trash2, Zap, FlaskConical, Ban, Timer, Upload } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export default function Accounts() {
+  const { t } = useTranslation()
   const [showAdd, setShowAdd] = useState(false)
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<'all' | 'normal' | 'rate_limited' | 'banned'>('all')
   const [sortKey, setSortKey] = useState<'requests' | 'usage' | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
   const PAGE_SIZE = 20
   const [addForm, setAddForm] = useState<AddAccountRequest>({
     refresh_token: '',
@@ -142,13 +145,13 @@ export default function Accounts() {
     if (!addForm.refresh_token.trim()) return
     setSubmitting(true)
     try {
-      const result = await api.addAccount(addForm)
-      showToast(result.message || '账号添加成功')
+      await api.addAccount(addForm)
+      showToast(t('accounts.addSuccess'))
       setShowAdd(false)
       setAddForm({ refresh_token: '', proxy_url: '' })
       void reload()
     } catch (error) {
-      showToast(`添加失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.addFailed', { error: getErrorMessage(error) }), 'error')
     } finally {
       setSubmitting(false)
     }
@@ -158,7 +161,7 @@ export default function Accounts() {
     const file = event.target.files?.[0]
     if (!file) return
     if (!file.name.endsWith('.txt')) {
-      showToast('请选择 .txt 文件', 'error')
+      showToast(t('accounts.selectTxtFile'), 'error')
       return
     }
     setImporting(true)
@@ -168,13 +171,13 @@ export default function Accounts() {
       const res = await fetch('/api/admin/accounts/import', { method: 'POST', body: formData, headers: getAdminKey() ? { 'X-Admin-Key': getAdminKey() } : {} })
       const data = await res.json()
       if (!res.ok) {
-        showToast(data.error || '导入失败', 'error')
+        showToast(data.error ? t('accounts.importFailedWithReason', { error: data.error }) : t('accounts.importFailed'), 'error')
       } else {
-        showToast(data.message || '导入完成')
+        showToast(t('accounts.importCompleted'))
         void reload()
       }
     } catch (error) {
-      showToast(`导入失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.importFailedWithReason', { error: getErrorMessage(error) }), 'error')
     } finally {
       setImporting(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -183,24 +186,19 @@ export default function Accounts() {
 
   const handleDelete = async (account: AccountRow) => {
     const confirmed = await confirm({
-      title: '删除账号',
-      description: (
-        <>
-          账号 <span className="font-semibold text-foreground">{account.email || `ID ${account.id}`}</span> 将从当前账号池中移除。
-          该操作会立即生效，且通常不再恢复。
-        </>
-      ),
-      confirmText: '确认删除',
+      title: t('accounts.deleteTitle'),
+      description: t('accounts.deleteDesc', { account: account.email || `ID ${account.id}` }),
+      confirmText: t('accounts.deleteConfirm'),
       tone: 'destructive',
       confirmVariant: 'destructive',
     })
     if (!confirmed) return
     try {
       await api.deleteAccount(account.id)
-      showToast('已删除')
+      showToast(t('accounts.deleted'))
       void reload()
     } catch (error) {
-      showToast(`删除失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.deleteFailed', { error: getErrorMessage(error) }), 'error')
     }
   }
 
@@ -208,10 +206,10 @@ export default function Accounts() {
     setRefreshingIds((prev) => new Set(prev).add(account.id))
     try {
       await api.refreshAccount(account.id)
-      showToast('刷新请求已发送')
+      showToast(t('accounts.refreshRequested'))
       void reloadSilently()
     } catch (error) {
-      showToast(`刷新失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.refreshFailed', { error: getErrorMessage(error) }), 'error')
     } finally {
       setRefreshingIds((prev) => {
         const next = new Set(prev)
@@ -224,9 +222,9 @@ export default function Accounts() {
   const handleBatchDelete = async () => {
     if (selected.size === 0) return
     const confirmed = await confirm({
-      title: '批量删除账号',
-      description: `选中的 ${selected.size} 个账号会一起从账号池中移除。请确认当前选择无误。`,
-      confirmText: '确认删除',
+      title: t('accounts.batchDeleteTitle'),
+      description: t('accounts.batchDeleteDesc', { count: selected.size }),
+      confirmText: t('accounts.deleteConfirm'),
       tone: 'destructive',
       confirmVariant: 'destructive',
     })
@@ -242,7 +240,7 @@ export default function Accounts() {
         fail++
       }
     }
-    showToast(`批量删除完成：成功 ${success}，失败 ${fail}`)
+    showToast(t('accounts.batchDeleteDone', { success, fail }))
     setSelected(new Set())
     setBatchLoading(false)
     void reload()
@@ -261,7 +259,7 @@ export default function Accounts() {
         fail++
       }
     }
-    showToast(`批量刷新完成：成功 ${success}，失败 ${fail}`)
+    showToast(t('accounts.batchRefreshDone', { success, fail }))
     setBatchLoading(false)
     void reload()
   }
@@ -270,10 +268,15 @@ export default function Accounts() {
     setBatchTesting(true)
     try {
       const result = await api.batchTestAccounts()
-      showToast(`批量测试完成：成功 ${result.success} / 封禁 ${result.banned} / 限流 ${result.rate_limited} / 失败 ${result.failed}`)
+      showToast(t('accounts.batchTestDone', {
+        success: result.success,
+        banned: result.banned,
+        rateLimited: result.rate_limited,
+        failed: result.failed,
+      }))
       void reload()
     } catch (error) {
-      showToast(`批量测试失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.batchTestFailed', { error: getErrorMessage(error) }), 'error')
     } finally {
       setBatchTesting(false)
     }
@@ -281,19 +284,19 @@ export default function Accounts() {
 
   const handleCleanBanned = async () => {
     const confirmed = await confirm({
-      title: '清理封禁账号',
-      description: '会清除所有 unauthorized 状态标记，让这些账号重新参与调度与测试。',
-      confirmText: '确认清理',
+      title: t('accounts.cleanBannedTitle'),
+      description: t('accounts.cleanBannedDesc'),
+      confirmText: t('accounts.cleanConfirm'),
       tone: 'warning',
     })
     if (!confirmed) return
     setCleaningBanned(true)
     try {
-      const result = await api.cleanBanned()
-      showToast(result.message)
+      await api.cleanBanned()
+      showToast(t('accounts.cleanBannedSuccess'))
       void reload()
     } catch (error) {
-      showToast(`清理失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.cleanBannedFailed', { error: getErrorMessage(error) }), 'error')
     } finally {
       setCleaningBanned(false)
     }
@@ -301,19 +304,19 @@ export default function Accounts() {
 
   const handleCleanRateLimited = async () => {
     const confirmed = await confirm({
-      title: '清理限流账号',
-      description: '会清除所有 rate_limited 状态标记，让这些账号重新回到可调度状态。',
-      confirmText: '确认清理',
+      title: t('accounts.cleanRateLimitedTitle'),
+      description: t('accounts.cleanRateLimitedDesc'),
+      confirmText: t('accounts.cleanConfirm'),
       tone: 'warning',
     })
     if (!confirmed) return
     setCleaningRateLimited(true)
     try {
-      const result = await api.cleanRateLimited()
-      showToast(result.message)
+      await api.cleanRateLimited()
+      showToast(t('accounts.cleanRateLimitedSuccess'))
       void reload()
     } catch (error) {
-      showToast(`清理失败: ${getErrorMessage(error)}`, 'error')
+      showToast(t('accounts.cleanRateLimitedFailed', { error: getErrorMessage(error) }), 'error')
     } finally {
       setCleaningRateLimited(false)
     }
@@ -325,36 +328,36 @@ export default function Accounts() {
       loading={loading}
       error={error}
       onRetry={() => void reload()}
-      loadingTitle="正在加载账号列表"
-      loadingDescription="账号池和实时状态正在同步。"
-      errorTitle="账号页加载失败"
+      loadingTitle={t('accounts.loadingTitle')}
+      loadingDescription={t('accounts.loadingDesc')}
+      errorTitle={t('accounts.errorTitle')}
     >
       <>
         <PageHeader
-          title="账号管理"
-          description="管理 Codex 反代账号（Refresh Token）"
+          title={t('accounts.title')}
+          description={t('accounts.description')}
           onRefresh={() => void reload()}
           actions={(
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" disabled={batchTesting} onClick={() => void handleBatchTest()}>
                 <FlaskConical className="size-3" />
-                {batchTesting ? '测试中...' : '批量测试'}
+                {batchTesting ? t('accounts.batchTesting') : t('accounts.batchTest')}
               </Button>
               <Button variant="outline" size="sm" disabled={cleaningBanned} onClick={() => void handleCleanBanned()}>
                 <Ban className="size-3" />
-                {cleaningBanned ? '清理中...' : '清理封禁'}
+                {cleaningBanned ? t('accounts.cleaning') : t('accounts.cleanBanned')}
               </Button>
               <Button variant="outline" size="sm" disabled={cleaningRateLimited} onClick={() => void handleCleanRateLimited()}>
                 <Timer className="size-3" />
-                {cleaningRateLimited ? '清理中...' : '清理限流'}
+                {cleaningRateLimited ? t('accounts.cleaning') : t('accounts.cleanRateLimited')}
               </Button>
               <Button onClick={() => setShowAdd(true)}>
                 <Plus className="size-3.5" />
-                添加账号
+                {t('accounts.addAccount')}
               </Button>
               <Button variant="outline" disabled={importing} onClick={() => fileInputRef.current?.click()}>
                 <Upload className="size-3.5" />
-                {importing ? '导入中...' : '导入文件'}
+                {importing ? t('accounts.importing') : t('accounts.importFile')}
               </Button>
               <input
                 ref={fileInputRef}
@@ -368,15 +371,15 @@ export default function Accounts() {
         />
 
         <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <CompactStat label="总账号数量" value={totalAccounts} tone="neutral" />
-          <CompactStat label="正常账号" value={normalAccounts} tone="success" />
-          <CompactStat label="限流账号" value={rateLimitedAccounts} tone="warning" />
-          <CompactStat label="封禁账号" value={bannedAccounts} tone="danger" />
+          <CompactStat label={t('accounts.totalAccounts')} chipLabel={t('accounts.filterAll')} value={totalAccounts} tone="neutral" />
+          <CompactStat label={t('accounts.normalAccounts')} chipLabel={t('accounts.filterNormal')} value={normalAccounts} tone="success" />
+          <CompactStat label={t('accounts.rateLimited')} chipLabel={t('accounts.filterRateLimited')} value={rateLimitedAccounts} tone="warning" />
+          <CompactStat label={t('accounts.bannedAccounts')} chipLabel={t('accounts.filterBanned')} value={bannedAccounts} tone="danger" />
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-white/55 px-4 py-3 text-[12px] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
-          <span className="font-semibold text-foreground">筛选</span>
-          {([['all', '全部'], ['normal', '正常'], ['rate_limited', '限流'], ['banned', '封禁']] as const).map(([key, label]) => (
+          <span className="font-semibold text-foreground">{t('accounts.filter')}</span>
+          {([['all', t('accounts.filterAll')], ['normal', t('accounts.filterNormal')], ['rate_limited', t('accounts.filterRateLimited')], ['banned', t('accounts.filterBanned')]] as const).map(([key, label]) => (
             <button
               key={key}
               onClick={() => { setStatusFilter(key); setPage(1) }}
@@ -388,29 +391,29 @@ export default function Accounts() {
             >
               {label} {key === 'all' ? totalAccounts : key === 'normal' ? normalAccounts : key === 'rate_limited' ? rateLimitedAccounts : bannedAccounts}
             </button>
-          ))}  
+          ))}
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-white/55 px-4 py-3 text-[12px] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
-          <span className="font-semibold text-foreground">调度视图</span>
-          <SchedulerChip label="Healthy" value={healthyAccounts} tone="success" />
-          <SchedulerChip label="Warm" value={warmAccounts} tone="warning" />
-          <SchedulerChip label="Risky" value={riskyAccounts} tone="danger" />
-          <SchedulerChip label="Banned" value={bannedAccounts} tone="neutral" />
+          <span className="font-semibold text-foreground">{t('accounts.schedulerView')}</span>
+          <SchedulerChip label={t('accounts.healthy')} value={healthyAccounts} tone="success" />
+          <SchedulerChip label={t('accounts.warm')} value={warmAccounts} tone="warning" />
+          <SchedulerChip label={t('accounts.risky')} value={riskyAccounts} tone="danger" />
+          <SchedulerChip label={t('status.unauthorized')} value={bannedAccounts} tone="neutral" />
         </div>
 
         {selected.size > 0 && (
           <div className="flex items-center justify-between gap-3 px-4 py-2.5 mb-4 rounded-2xl bg-primary/10 border border-primary/20 text-sm font-semibold text-primary">
-            <span>已选 {selected.size} 项</span>
+            <span>{t('common.selected', { count: selected.size })}</span>
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" disabled={batchLoading} onClick={() => void handleBatchRefresh()}>
-                批量刷新
+                {t('accounts.batchRefresh')}
               </Button>
               <Button variant="destructive" size="sm" disabled={batchLoading} onClick={() => void handleBatchDelete()}>
-                批量删除
+                {t('accounts.batchDelete')}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>
-                取消选择
+                {t('accounts.cancelSelection')}
               </Button>
             </div>
           </div>
@@ -421,9 +424,9 @@ export default function Accounts() {
             <StateShell
               variant="section"
               isEmpty={accounts.length === 0}
-              emptyTitle="还没有账号"
-              emptyDescription="导入 Refresh Token 后，账号会立即加入号池并显示在这里。"
-              action={<Button onClick={() => setShowAdd(true)}>添加账号</Button>}
+              emptyTitle={t('accounts.noData')}
+              emptyDescription={t('accounts.noDataDesc')}
+              action={<Button onClick={() => setShowAdd(true)}>{t('accounts.addAccount')}</Button>}
             >
               <div className="overflow-auto border border-border rounded-xl">
                 <Table>
@@ -438,23 +441,23 @@ export default function Accounts() {
                         />
                       </TableHead>
                       <TableHead className="text-[13px] font-semibold">ID</TableHead>
-                      <TableHead className="text-[13px] font-semibold">邮箱</TableHead>
-                      <TableHead className="text-[13px] font-semibold">套餐</TableHead>
-                      <TableHead className="text-[13px] font-semibold">状态</TableHead>
+                      <TableHead className="text-[13px] font-semibold">{t('accounts.email')}</TableHead>
+                      <TableHead className="text-[13px] font-semibold">{t('accounts.plan')}</TableHead>
+                      <TableHead className="text-[13px] font-semibold">{t('accounts.status')}</TableHead>
                       <TableHead
                         className="text-[13px] font-semibold cursor-pointer select-none hover:text-primary transition-colors"
                         onClick={() => { if (sortKey === 'requests') { setSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setSortKey('requests'); setSortDir('desc') }; setPage(1) }}
                       >
-                        请求统计 {sortKey === 'requests' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                        {t('accounts.requests')} {sortKey === 'requests' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                       </TableHead>
                       <TableHead
                         className="text-[13px] font-semibold cursor-pointer select-none hover:text-primary transition-colors"
                         onClick={() => { if (sortKey === 'usage') { setSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setSortKey('usage'); setSortDir('desc') }; setPage(1) }}
                       >
-                        用量 {sortKey === 'usage' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
+                        {t('accounts.usage')} {sortKey === 'usage' ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                       </TableHead>
-                      <TableHead className="text-[13px] font-semibold">更新时间</TableHead>
-                      <TableHead className="text-[13px] font-semibold text-right">操作</TableHead>
+                      <TableHead className="text-[13px] font-semibold">{t('accounts.updatedAt')}</TableHead>
+                      <TableHead className="text-[13px] font-semibold text-right">{t('accounts.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -480,7 +483,11 @@ export default function Accounts() {
                           <div className="space-y-1">
                             <StatusBadge status={account.status} />
                             <div className="text-[11px] text-muted-foreground">
-                              {formatHealthTier(account.health_tier)} · 分 {Math.round(account.scheduler_score ?? 0)} · 并发 {account.dynamic_concurrency_limit ?? '-'}
+                              {t('accounts.healthSummary', {
+                                health: formatHealthTier(account.health_tier, t),
+                                score: Math.round(account.scheduler_score ?? 0),
+                                concurrency: account.dynamic_concurrency_limit ?? '-',
+                              })}
                             </div>
                           </div>
                         </TableCell>
@@ -494,23 +501,23 @@ export default function Accounts() {
                         <TableCell>
                           {account.plan_type?.toLowerCase() === 'free' ? (
                             account.usage_percent_7d !== null && account.usage_percent_7d !== undefined ? (
-                            <div className="w-24">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[12px] font-medium">{account.usage_percent_7d.toFixed(1)}%</span>
+                              <div className="w-24">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[12px] font-medium">{account.usage_percent_7d.toFixed(1)}%</span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      account.usage_percent_7d >= 90 ? 'bg-red-500' :
+                                        account.usage_percent_7d >= 70 ? 'bg-amber-500' :
+                                          'bg-emerald-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, account.usage_percent_7d)}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    account.usage_percent_7d >= 90 ? 'bg-red-500' :
-                                    account.usage_percent_7d >= 70 ? 'bg-amber-500' :
-                                    'bg-emerald-500'
-                                  }`}
-                                  style={{ width: `${Math.min(100, account.usage_percent_7d)}%` }}
-                                />
-                              </div>
-                            </div>
                             ) : (
-                              <span className="text-[12px] font-medium text-muted-foreground">未采集</span>
+                              <span className="text-[12px] font-medium text-muted-foreground">{t('accounts.notCollected')}</span>
                             )
                           ) : (
                             <span className="text-[13px] text-muted-foreground">-</span>
@@ -523,24 +530,24 @@ export default function Accounts() {
                               variant="outline"
                               size="sm"
                               onClick={() => setTestingAccount(account)}
-                              title="测试连接"
+                              title={t('accounts.testConnection')}
                             >
                               <Zap className="size-3" />
-                              测试
+                              {t('accounts.test')}
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={refreshingIds.has(account.id)}
                               onClick={() => void handleRefresh(account)}
-                              title="刷新 AT"
+                              title={t('accounts.refreshAccessToken')}
                             >
                               <RefreshCw className={`size-3 ${refreshingIds.has(account.id) ? 'animate-spin' : ''}`} />
-                              {refreshingIds.has(account.id) ? '刷新中' : '刷新'}
+                              {refreshingIds.has(account.id) ? t('accounts.refreshing') : t('accounts.refreshToken')}
                             </Button>
                             <Button variant="destructive" size="sm" onClick={() => void handleDelete(account)}>
                               <Trash2 className="size-3" />
-                              删除
+                              {t('accounts.deleteAccount')}
                             </Button>
                           </div>
                         </TableCell>
@@ -562,24 +569,24 @@ export default function Accounts() {
 
         <Modal
           show={showAdd}
-          title="添加账号"
+          title={t('accounts.addTitle')}
           contentClassName="sm:max-w-[640px]"
           onClose={() => setShowAdd(false)}
           footer={(
             <>
-              <Button variant="outline" onClick={() => setShowAdd(false)}>取消</Button>
+              <Button variant="outline" onClick={() => setShowAdd(false)}>{t('common.cancel')}</Button>
               <Button onClick={() => void handleAdd()} disabled={submitting || !addForm.refresh_token.trim()}>
-                {submitting ? '添加中...' : '添加'}
+                {submitting ? t('accounts.adding') : t('accounts.submit')}
               </Button>
             </>
           )}
         >
           <div className="space-y-4">
             <div>
-              <label className="block mb-2 text-sm font-semibold text-muted-foreground">Refresh Token *</label>
+              <label className="block mb-2 text-sm font-semibold text-muted-foreground">{t('accounts.refreshTokenLabel')} *</label>
               <textarea
                 className="w-full min-h-[160px] p-3 border border-input rounded-xl bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="每行一个 Refresh Token，支持批量粘贴"
+                placeholder={t('accounts.refreshTokenPlaceholder')}
                 value={addForm.refresh_token}
                 onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                   setAddForm((form) => ({ ...form, refresh_token: event.target.value }))
@@ -588,9 +595,9 @@ export default function Accounts() {
               />
             </div>
             <div>
-              <label className="block mb-2 text-sm font-semibold text-muted-foreground">代理地址（可选）</label>
+              <label className="block mb-2 text-sm font-semibold text-muted-foreground">{t('accounts.proxyUrl')}</label>
               <Input
-                placeholder="例如：http://127.0.0.1:7890"
+                placeholder={t('accounts.proxyUrlPlaceholder')}
                 value={addForm.proxy_url}
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setAddForm((form) => ({ ...form, proxy_url: event.target.value }))
@@ -620,10 +627,12 @@ export default function Accounts() {
 
 function CompactStat({
   label,
+  chipLabel,
   value,
   tone,
 }: {
   label: string
+  chipLabel?: string
   value: number
   tone: 'neutral' | 'success' | 'warning' | 'danger'
 }) {
@@ -654,7 +663,7 @@ function CompactStat({
       </div>
       <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold ${toneStyle.chip}`}>
         <span className={`size-2 rounded-full ${toneStyle.dot}`} />
-        {label.replace('账号', '')}
+        {chipLabel ?? label}
       </div>
     </div>
   )
@@ -684,18 +693,19 @@ function SchedulerChip({
   )
 }
 
-function formatHealthTier(healthTier?: string) {
+function formatHealthTier(healthTier?: string, t?: any) {
+  if (!t) return 'Unknown'
   switch (healthTier) {
     case 'healthy':
-      return '健康'
+      return t('accounts.healthy')
     case 'warm':
-      return '预热'
+      return t('accounts.warm')
     case 'risky':
-      return '风险'
+      return t('accounts.risky')
     case 'banned':
-      return '隔离'
+      return t('accounts.quarantine')
     default:
-      return '未知'
+      return t('accounts.unknown')
   }
 }
 
@@ -747,6 +757,7 @@ function TestConnectionModal({
   onClose: () => void
   onSettled: () => void
 }) {
+  const { t } = useTranslation()
   const [output, setOutput] = useState<string[]>([])
   const [status, setStatus] = useState<'connecting' | 'streaming' | 'success' | 'error'>('connecting')
   const [errorMsg, setErrorMsg] = useState('')
@@ -798,7 +809,7 @@ function TestConnectionModal({
         const reader = res.body?.getReader()
         if (!reader) {
           setStatus('error')
-          setErrorMsg('浏览器不支持流式读取')
+          setErrorMsg(t('accounts.browserStreamingUnsupported'))
           markSettled()
           return
         }
@@ -833,7 +844,7 @@ function TestConnectionModal({
                 case 'error':
                   receivedTerminalEvent = true
                   setStatus('error')
-                  setErrorMsg(event.error || '未知错误')
+                  setErrorMsg(event.error || t('accounts.unknownError'))
                   markSettled()
                   break
               }
@@ -860,13 +871,13 @@ function TestConnectionModal({
 
         if (!receivedTerminalEvent) {
           setStatus('error')
-          setErrorMsg('连接已结束，但未收到完整的结束事件')
+          setErrorMsg(t('accounts.connectionEndedUnexpectedly'))
           markSettled()
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setStatus('error')
-        setErrorMsg(err instanceof Error ? err.message : '连接失败')
+        setErrorMsg(err instanceof Error ? err.message : t('accounts.connectionFailed'))
         markSettled()
       }
     }
@@ -880,17 +891,17 @@ function TestConnectionModal({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [account.id, markSettled])
+  }, [account.id, markSettled, t])
 
   useEffect(() => {
     outputEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [output])
 
   const statusLabel = {
-    connecting: '⏳ 连接中...',
-    streaming: '🔄 接收响应...',
-    success: '✅ 测试成功',
-    error: '❌ 测试失败',
+    connecting: `⏳ ${t('accounts.connecting')}`,
+    streaming: `🔄 ${t('accounts.receivingResponse')}`,
+    success: `✅ ${t('accounts.testSuccess')}`,
+    error: `❌ ${t('accounts.testFailed')}`,
   }[status]
 
   const statusColor = {
@@ -904,7 +915,7 @@ function TestConnectionModal({
   return (
     <Modal
       show={true}
-      title={`测试连接 - ${account.email || `ID ${account.id}`}`}
+      title={t('accounts.testConnectionTitle', { account: account.email || `ID ${account.id}` })}
       onClose={() => {
         abortRef.current?.abort()
         onClose()
@@ -917,7 +928,7 @@ function TestConnectionModal({
             onClose()
           }}
         >
-          关闭
+          {t('common.close')}
         </Button>
       }
       contentClassName="sm:max-w-[680px]"
@@ -940,7 +951,7 @@ function TestConnectionModal({
             style={{ fontFamily: 'var(--font-geist-mono)' }}
           >
             {output.length === 0 && status === 'connecting' && (
-              <span className="text-muted-foreground animate-pulse">正在发送测试请求...</span>
+              <span className="text-muted-foreground animate-pulse">{t('accounts.sendingTestRequest')}</span>
             )}
             {output.join('')}
             <div ref={outputEndRef} />
@@ -949,7 +960,7 @@ function TestConnectionModal({
 
         {errorMsg && (
           <div className="max-h-[40vh] overflow-auto rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
-            <div className="mb-2 text-sm font-semibold">失败详情</div>
+            <div className="mb-2 text-sm font-semibold">{t('accounts.failureDetails')}</div>
             <pre
               className="text-[20px] leading-[1.8] whitespace-pre-wrap break-all"
               style={{ fontFamily: 'var(--font-geist-mono)' }}

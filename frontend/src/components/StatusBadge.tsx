@@ -1,27 +1,29 @@
 import { Badge } from '@/components/ui/badge'
+import { useTranslation } from 'react-i18next'
 
 interface StatusBadgeProps {
   status?: string | null
 }
 
-const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string; dotColor: string }> = {
-  active: { variant: 'default', label: '可用', dotColor: 'bg-emerald-500' },
-  ready: { variant: 'default', label: '就绪', dotColor: 'bg-emerald-500' },
-  cooldown: { variant: 'secondary', label: '冷却中', dotColor: 'bg-amber-500' },
-  rate_limited: { variant: 'secondary', label: '限流', dotColor: 'bg-yellow-500' },
-  unauthorized: { variant: 'destructive', label: '封禁', dotColor: 'bg-red-500' },
-  error: { variant: 'destructive', label: '错误', dotColor: 'bg-red-400' },
-  paused: { variant: 'outline', label: '已暂停', dotColor: 'bg-blue-500' },
+const statusConfig: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; dotColor: string }> = {
+  active: { variant: 'default', dotColor: 'bg-emerald-500' },
+  ready: { variant: 'default', dotColor: 'bg-emerald-500' },
+  cooldown: { variant: 'secondary', dotColor: 'bg-amber-500' },
+  rate_limited: { variant: 'secondary', dotColor: 'bg-yellow-500' },
+  unauthorized: { variant: 'destructive', dotColor: 'bg-red-500' },
+  error: { variant: 'destructive', dotColor: 'bg-red-400' },
+  paused: { variant: 'outline', dotColor: 'bg-blue-500' },
 }
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
+  const { t } = useTranslation()
   const key = status ?? 'unknown'
-  const config = statusConfig[key] ?? { variant: 'outline' as const, label: key, dotColor: 'bg-gray-400' }
+  const config = statusConfig[key] ?? { variant: 'outline' as const, dotColor: 'bg-gray-400' }
 
   return (
     <Badge variant={config.variant} className="gap-1.5 text-[13px]">
       <span className={`size-1.5 rounded-full ${config.dotColor}`} />
-      {config.label}
+      {t(`status.${key}`, { defaultValue: t('status.unknown', { defaultValue: key }) })}
     </Badge>
   )
 }

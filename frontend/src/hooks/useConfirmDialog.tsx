@@ -4,6 +4,7 @@ import { AlertTriangle, ShieldAlert, Trash2 } from 'lucide-react'
 import Modal from '../components/Modal'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useTranslation } from 'react-i18next'
 
 type ConfirmTone = 'default' | 'warning' | 'destructive'
 type ConfirmVariant = 'default' | 'destructive'
@@ -25,18 +26,18 @@ interface ResolvedConfirmDialogOptions extends ConfirmDialogOptions {
   confirmVariant: ConfirmVariant
 }
 
-const toneStyles: Record<ConfirmTone, { iconWrap: string; hint: string }> = {
+const toneStyles: Record<ConfirmTone, { iconWrap: string; hintKey: string }> = {
   default: {
     iconWrap: 'border-primary/20 bg-primary/10 text-primary',
-    hint: '操作会立即生效，请确认后继续。',
+    hintKey: 'common.confirmHintDefault',
   },
   warning: {
     iconWrap: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    hint: '请确认当前选择无误，再继续执行。',
+    hintKey: 'common.confirmHintWarning',
   },
   destructive: {
     iconWrap: 'border-destructive/20 bg-destructive/10 text-destructive',
-    hint: '此操作会直接修改当前数据，通常不可撤销。',
+    hintKey: 'common.confirmHintDestructive',
   },
 }
 
@@ -55,6 +56,7 @@ function ConfirmDialog({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const { t } = useTranslation()
   const toneStyle = toneStyles[options.tone]
 
   return (
@@ -91,7 +93,7 @@ function ConfirmDialog({
               {options.description}
             </div>
             <div className="inline-flex rounded-full bg-muted px-3 py-1 text-[12px] font-medium text-muted-foreground">
-              {toneStyle.hint}
+              {t(toneStyle.hintKey)}
             </div>
           </div>
         </div>
@@ -101,6 +103,7 @@ function ConfirmDialog({
 }
 
 export function useConfirmDialog() {
+  const { t } = useTranslation()
   const [options, setOptions] = useState<ResolvedConfirmDialogOptions | null>(null)
   const resolverRef = useRef<((value: boolean) => void) | null>(null)
 
@@ -118,8 +121,8 @@ export function useConfirmDialog() {
     }
 
     const resolvedOptions: ResolvedConfirmDialogOptions = {
-      confirmText: '确认',
-      cancelText: '取消',
+      confirmText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       tone: 'warning',
       confirmVariant: 'default',
       ...nextOptions,
@@ -129,7 +132,7 @@ export function useConfirmDialog() {
       resolverRef.current = resolve
       setOptions(resolvedOptions)
     })
-  }, [])
+  }, [t])
 
   useEffect(() => {
     return () => {

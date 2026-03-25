@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface PageHeaderProps {
   title: string
@@ -14,10 +15,12 @@ export default function PageHeader({
   title,
   description,
   onRefresh,
-  refreshLabel = '刷新',
+  refreshLabel,
   actions,
 }: PageHeaderProps) {
+  const { t } = useTranslation()
   const hasActions = Boolean(onRefresh) || Boolean(actions)
+  const resolvedRefreshLabel = refreshLabel ?? t('common.refresh')
 
   return (
     <div className="flex items-end justify-between gap-6 mb-8 max-sm:flex-col max-sm:items-stretch">
@@ -36,7 +39,7 @@ export default function PageHeader({
           {onRefresh ? (
             <Button variant="outline" onClick={onRefresh} className="max-sm:w-full">
               <RefreshCw className="size-3.5" />
-              {refreshLabel}
+              {resolvedRefreshLabel}
             </Button>
           ) : null}
           {actions}

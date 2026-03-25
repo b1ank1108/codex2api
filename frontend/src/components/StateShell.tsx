@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, Inbox } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface StateShellProps {
   children: ReactNode
@@ -25,13 +26,19 @@ export default function StateShell({
   onRetry,
   action,
   variant = 'section',
-  loadingTitle = '正在加载',
-  loadingDescription = '请稍候，数据正在同步。',
-  errorTitle = '加载失败',
-  emptyTitle = '暂无数据',
-  emptyDescription = '当前还没有可展示的内容。',
+  loadingTitle,
+  loadingDescription,
+  errorTitle,
+  emptyTitle,
+  emptyDescription,
 }: StateShellProps) {
+  const { t } = useTranslation()
   const minH = variant === 'page' ? 'min-h-[320px]' : 'min-h-[220px]'
+  const resolvedLoadingTitle = loadingTitle ?? t('common.loading')
+  const resolvedLoadingDescription = loadingDescription ?? t('common.syncingData')
+  const resolvedErrorTitle = errorTitle ?? t('common.loadFailed')
+  const resolvedEmptyTitle = emptyTitle ?? t('common.noData')
+  const resolvedEmptyDescription = emptyDescription ?? t('common.noContentYet')
 
   if (loading) {
     return (
@@ -39,8 +46,8 @@ export default function StateShell({
         <div className="size-16 flex items-center justify-center rounded-full bg-white/60">
           <div className="spinner" />
         </div>
-        <strong className="text-lg font-bold text-foreground">{loadingTitle}</strong>
-        <p className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">{loadingDescription}</p>
+        <strong className="text-lg font-bold text-foreground">{resolvedLoadingTitle}</strong>
+        <p className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">{resolvedLoadingDescription}</p>
       </div>
     )
   }
@@ -51,11 +58,11 @@ export default function StateShell({
         <div className="size-16 flex items-center justify-center rounded-full bg-destructive/12 text-destructive">
           <AlertCircle className="size-6" />
         </div>
-        <strong className="text-lg font-bold text-foreground">{errorTitle}</strong>
+        <strong className="text-lg font-bold text-foreground">{resolvedErrorTitle}</strong>
         <p className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">{error}</p>
         {(onRetry || action) ? (
           <div className="flex items-center justify-center gap-2.5 flex-wrap">
-            {onRetry ? <Button variant="outline" onClick={onRetry}>重试</Button> : null}
+            {onRetry ? <Button variant="outline" onClick={onRetry}>{t('common.retry')}</Button> : null}
             {action}
           </div>
         ) : null}
@@ -69,8 +76,8 @@ export default function StateShell({
         <div className="size-16 flex items-center justify-center rounded-full bg-[hsl(var(--info-bg))] text-[hsl(var(--info))]">
           <Inbox className="size-6" />
         </div>
-        <strong className="text-lg font-bold text-foreground">{emptyTitle}</strong>
-        <p className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">{emptyDescription}</p>
+        <strong className="text-lg font-bold text-foreground">{resolvedEmptyTitle}</strong>
+        <p className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">{resolvedEmptyDescription}</p>
         {action ? <div className="flex items-center justify-center gap-2.5 flex-wrap">{action}</div> : null}
       </div>
     )

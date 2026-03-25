@@ -58,6 +58,7 @@ const tooltipContentStyle = {
 }
 const tooltipLabelStyle = { color: 'hsl(var(--foreground))', fontWeight: 600 }
 const tooltipItemStyle = { color: 'hsl(var(--foreground))' }
+const tokenBreakdownTooltipPosition = { y: -160 }
 const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: 'compact',
   maximumFractionDigits: 1,
@@ -118,8 +119,9 @@ export default function DashboardUsageCharts({
     })
 
     const modelData: ModelRankingPoint[] = serverData.models
+      .slice()
+      .sort((a, b) => b.requests - a.requests)
       .slice(0, 5)
-      .reverse()
       .map((m) => ({
         model: m.model,
         shortModel: truncateLabel(m.model, 22),
@@ -276,7 +278,8 @@ export default function DashboardUsageCharts({
                 <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} minTickGap={20} tickMargin={8} />
                 <YAxis tickFormatter={formatCompactNumber} tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
                 <Tooltip
-                  position={{ y: -10 }}
+                  position={tokenBreakdownTooltipPosition}
+                  allowEscapeViewBox={{ y: true }}
                   offset={20}
                   formatter={(value) => formatNumber(value)}
                   labelFormatter={(_, payload) => getTooltipLabel(payload, 'fullLabel')}
@@ -286,8 +289,8 @@ export default function DashboardUsageCharts({
                 />
                 <Legend wrapperStyle={{ paddingTop: 12, fontSize: 12 }} />
                 <Bar dataKey="inputTokens" stackId="tokens" name={t('dashboard.seriesInputTokens')} fill="hsl(var(--info))" radius={[0, 0, 4, 4]} />
-                <Bar dataKey="outputTokens" stackId="tokens" name={t('dashboard.seriesOutputTokens')} fill="hsl(var(--success))" />
-                <Bar dataKey="reasoningTokens" stackId="tokens" name={t('dashboard.seriesReasoningTokens')} fill="hsl(36 90% 55%)" />
+                <Bar dataKey="outputTokens" stackId="tokens" name={t('dashboard.seriesOutputTokens')} fill="hsl(var(--success))" minPointSize={4} />
+                <Bar dataKey="reasoningTokens" stackId="tokens" name={t('dashboard.seriesReasoningTokens')} fill="hsl(36 90% 55%)" minPointSize={4} />
                 <Bar dataKey="cachedTokens" stackId="tokens" name={t('dashboard.seriesCachedTokens')} fill="hsl(262 83% 58%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

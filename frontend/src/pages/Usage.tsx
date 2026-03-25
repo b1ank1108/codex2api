@@ -144,14 +144,14 @@ export default function Usage() {
       loading={loading}
       error={error}
       onRetry={() => { void reload(); void loadLogs() }}
-      loadingTitle="正在加载使用统计"
-      loadingDescription="性能指标正在同步。"
-      errorTitle="统计页加载失败"
+      loadingTitle={t('usage.loadingTitle')}
+      loadingDescription={t('usage.loadingDesc')}
+      errorTitle={t('usage.errorTitle')}
     >
       <>
         <PageHeader
-          title="使用统计"
-          description="请求日志与性能指标"
+          title={t('usage.title')}
+          description={t('usage.description')}
           onRefresh={() => { void reload(); void loadLogs() }}
         />
 
@@ -160,7 +160,7 @@ export default function Usage() {
           <Card className="py-0">
             <CardContent className="flex flex-col gap-2 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">总请求数</span>
+                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">{t('usage.totalRequestsCard')}</span>
                 <div className="size-10 flex items-center justify-center rounded-xl bg-primary/12 text-primary">
                   <Activity className="size-[18px]" />
                 </div>
@@ -169,8 +169,8 @@ export default function Usage() {
                 {formatTokens(totalRequests)}
               </div>
               <div className="text-[12px] text-muted-foreground leading-relaxed">
-                <span className="text-[hsl(var(--success))]">● 成功: {formatTokens(successRequests)}</span>
-                <span className="ml-2 text-muted-foreground">● 今日: {formatTokens(todayRequests)}</span>
+                <span className="text-[hsl(var(--success))]">● {t('usage.success')}: {formatTokens(successRequests)}</span>
+                <span className="ml-2 text-muted-foreground">● {t('usage.today')}: {formatTokens(todayRequests)}</span>
               </div>
             </CardContent>
           </Card>
@@ -178,7 +178,7 @@ export default function Usage() {
           <Card className="py-0">
             <CardContent className="flex flex-col gap-2 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">总 Token 数</span>
+                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">{t('usage.totalTokensCard')}</span>
                 <div className="size-10 flex items-center justify-center rounded-xl bg-[hsl(var(--info-bg))] text-[hsl(var(--info))]">
                   <Box className="size-[18px]" />
                 </div>
@@ -187,8 +187,8 @@ export default function Usage() {
                 {formatTokens(totalTokens)}
               </div>
               <div className="text-[12px] text-muted-foreground leading-relaxed">
-                <span>输入: {formatTokens(totalPromptTokens)}</span>
-                <span className="ml-2">输出: {formatTokens(totalCompletionTokens)}</span>
+                <span>{t('usage.inputTokens')}: {formatTokens(totalPromptTokens)}</span>
+                <span className="ml-2">{t('usage.outputTokens')}: {formatTokens(totalCompletionTokens)}</span>
               </div>
             </CardContent>
           </Card>
@@ -207,7 +207,7 @@ export default function Usage() {
               <div className="text-[28px] font-bold leading-none tracking-tighter">
                 {Math.round(rpm)}
               </div>
-              <div className="text-[12px] text-muted-foreground">每分钟请求数</div>
+              <div className="text-[12px] text-muted-foreground">{t('usage.rpmDesc')}</div>
             </CardContent>
           </Card>
 
@@ -222,14 +222,14 @@ export default function Usage() {
               <div className="text-[28px] font-bold leading-none tracking-tighter">
                 {formatTokens(tpm)}
               </div>
-              <div className="text-[12px] text-muted-foreground">每分钟 Token 数</div>
+              <div className="text-[12px] text-muted-foreground">{t('usage.tpmDesc')}</div>
             </CardContent>
           </Card>
 
           <Card className="py-0">
             <CardContent className="flex flex-col gap-2 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">错误率</span>
+                <span className="text-[11px] font-bold tracking-[0.12em] uppercase text-muted-foreground">{t('usage.errorRateCard')}</span>
                 <div className="size-10 flex items-center justify-center rounded-xl bg-[hsl(36_72%_40%/0.12)] text-[hsl(36,72%,40%)]">
                   <AlertTriangle className="size-[18px]" />
                 </div>
@@ -237,7 +237,7 @@ export default function Usage() {
               <div className="text-[28px] font-bold leading-none tracking-tighter">
                 {errorRate.toFixed(1)}%
               </div>
-              <div className="text-[12px] text-muted-foreground">平均延迟: {Math.round(avgDurationMs)}ms</div>
+              <div className="text-[12px] text-muted-foreground">{t('usage.avgLatencyInline', { value: Math.round(avgDurationMs) })}</div>
             </CardContent>
           </Card>
         </div>
@@ -247,7 +247,7 @@ export default function Usage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
               <div className="flex items-center gap-3">
-                <h3 className="text-base font-semibold text-foreground">请求记录</h3>
+                <h3 className="text-base font-semibold text-foreground">{t('usage.requestLogs')}</h3>
                 <div className="inline-flex rounded-lg border border-border bg-muted/50 p-0.5">
                   {TIME_RANGE_OPTIONS.map((key) => (
                     <button
@@ -266,16 +266,16 @@ export default function Usage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">{logsLoading ? '加载中…' : `${logsTotal} 条记录`}</span>
+                <span className="text-xs text-muted-foreground">{logsLoading ? t('common.loading') : t('usage.recordsCount', { count: logsTotal })}</span>
                 <Button
                   variant="destructive"
                   size="sm"
                   disabled={clearing || logs.length === 0}
                   onClick={async () => {
                     const confirmed = await confirm({
-                      title: '清空使用日志',
-                      description: '所有请求日志都会被清空，统计视图会立刻更新。该操作不可恢复。',
-                      confirmText: '确认清空',
+                      title: t('usage.clearLogsTitle'),
+                      description: t('usage.clearLogsDesc'),
+                      confirmText: t('usage.clearLogsConfirm'),
                       tone: 'destructive',
                       confirmVariant: 'destructive',
                     })
@@ -283,41 +283,41 @@ export default function Usage() {
                     setClearing(true)
                     try {
                       await api.clearUsageLogs()
-                      showToast('日志已清空')
+                      showToast(t('usage.clearLogsSuccess'))
                       setPage(1)
                       void reload()
                       void loadLogs()
-                    } catch (e) {
-                      showToast(`清空失败: ${String(e)}`, 'error')
+                    } catch {
+                      showToast(t('usage.clearLogsFailed'), 'error')
                     } finally {
                       setClearing(false)
                     }
                   }}
                 >
-                  {clearing ? '清空中...' : '清空日志'}
+                  {clearing ? t('usage.clearingLogs') : t('usage.clearLogs')}
                 </Button>
               </div>
             </div>
             <StateShell
               variant="section"
               isEmpty={logs.length === 0}
-              emptyTitle="暂无请求记录"
-              emptyDescription="请求进入代理后，会在这里展示最近日志和状态码。"
+              emptyTitle={t('usage.emptyTitle')}
+              emptyDescription={t('usage.emptyDesc')}
             >
               <div className="overflow-auto border border-border rounded-xl">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-[14px] font-semibold">状态</TableHead>
-                      <TableHead className="text-[14px] font-semibold">模型</TableHead>
-                      <TableHead className="text-[14px] font-semibold">来源账号</TableHead>
-                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>端点</TableHead>
-                      <TableHead className="text-[14px] font-semibold">类型</TableHead>
-                      <TableHead className="text-[14px] font-semibold">TOKEN</TableHead>
-                      <TableHead className="text-[14px] font-semibold">读取缓存</TableHead>
-                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>首字时间</TableHead>
-                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>总耗时</TableHead>
-                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>时间</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableStatus')}</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableModel')}</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableAccount')}</TableHead>
+                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>{t('usage.tableEndpoint')}</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableType')}</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableToken')}</TableHead>
+                      <TableHead className="text-[14px] font-semibold">{t('usage.tableCached')}</TableHead>
+                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>{t('usage.tableFirstToken')}</TableHead>
+                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>{t('usage.tableDuration')}</TableHead>
+                      <TableHead className="text-[16px] font-semibold" style={{ fontFamily: "'Geist Mono', monospace" }}>{t('usage.tableTime')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
