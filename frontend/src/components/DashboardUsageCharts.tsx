@@ -276,7 +276,8 @@ export default function DashboardUsageCharts({
                 <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} minTickGap={20} tickMargin={8} />
                 <YAxis tickFormatter={formatCompactNumber} tick={{ fill: axisColor, fontSize: 12 }} axisLine={{ stroke: gridColor }} tickLine={{ stroke: gridColor }} />
                 <Tooltip
-                  position={{ y: 10 }}
+                  position={{ y: -10 }}
+                  offset={20}
                   formatter={(value) => formatNumber(value)}
                   labelFormatter={(_, payload) => getTooltipLabel(payload, 'fullLabel')}
                   contentStyle={tooltipContentStyle}
