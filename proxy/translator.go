@@ -77,10 +77,16 @@ func convertMessagesToInput(messages gjson.Result) []byte {
 			role = "user"
 		}
 
+		// assistant 用 output_text，其他角色用 input_text
+		contentType := "input_text"
+		if role == "assistant" {
+			contentType = "output_text"
+		}
+
 		if content.Type == gjson.String {
 			// 简单文本内容
-			item := fmt.Sprintf(`{"type":"message","role":"%s","content":[{"type":"input_text","text":%s}]}`,
-				role, escapeJSON(content.String()))
+			item := fmt.Sprintf(`{"type":"message","role":"%s","content":[{"type":"%s","text":%s}]}`,
+				role, contentType, escapeJSON(content.String()))
 			items = append(items, item)
 		} else if content.IsArray() {
 			// 多部分内容（text / image_url 等）
@@ -90,7 +96,7 @@ func convertMessagesToInput(messages gjson.Result) []byte {
 				switch partType {
 				case "text":
 					text := part.Get("text").String()
-					parts = append(parts, fmt.Sprintf(`{"type":"input_text","text":%s}`, escapeJSON(text)))
+					parts = append(parts, fmt.Sprintf(`{"type":"%s","text":%s}`, contentType, escapeJSON(text)))
 				case "image_url":
 					imgURL := part.Get("image_url.url").String()
 					parts = append(parts, fmt.Sprintf(`{"type":"input_image","image_url":"%s"}`, imgURL))
