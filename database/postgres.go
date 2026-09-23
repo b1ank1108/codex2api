@@ -231,6 +231,8 @@ type DB struct {
 	accountInsertMu       sync.Mutex
 	sqliteWriteSem        chan struct{}
 	sqliteSingleConn      bool
+	channelMonitorOnce    sync.Once
+	channelMonitorInitErr error
 
 	// 配了 scope 累计额度的 API Key 集合（issue #439 v2）。落库热路径靠它跳过
 	// 绝大多数 Key，60s 刷新一次；管理端保存后会主动失效。
@@ -478,6 +480,9 @@ func New(driver string, dsn string, schema ...string) (*DB, error) {
 		ctx = postGrokCtx
 		if err := db.ensureCodexRefreshSchema(ctx); err != nil {
 			return nil, fmt.Errorf("初始化 Codex 刷新保护表失败: %w", err)
+		}
+		if err := db.ensureChannelMonitorSchema(ctx); err != nil {
+			return nil, fmt.Errorf("初始化渠道监控表失败: %w", err)
 		}
 		if err := db.ensurePromptFilterNewAPIBindingsTable(ctx); err != nil {
 			return nil, fmt.Errorf("创建 NewAPI 平台绑定表失败: %w", err)

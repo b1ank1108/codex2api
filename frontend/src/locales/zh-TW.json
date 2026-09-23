@@ -182,7 +182,8 @@
     "streamInterrupted": "串流已中斷，未收到成功完成事件。"
   },
   "nav": {
-    "qualityTest": "降智檢測"
+    "qualityTest": "降智檢測",
+    "channelMonitor": "渠道監控"
   },
   "imageStudioPortal": {
     "quota": {

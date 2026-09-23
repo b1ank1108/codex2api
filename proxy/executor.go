@@ -901,6 +901,46 @@ func ExecuteOpenAIResponsesRequest(ctx context.Context, account *auth.Account, r
 	return retryResp, nil
 }
 
+// ExecuteOpenAIResponsesBillingRequest probes the optional Sub2API-compatible
+// billing declaration exposed by a Responses relay. The probe uses the same
+// account transport, proxy and custom headers as normal Responses traffic.
+func ExecuteOpenAIResponsesBillingRequest(ctx context.Context, account *auth.Account, proxyOverride string) (*http.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if account == nil || !account.IsOpenAIResponsesAPI() {
+		return nil, ErrNoAvailableAccount()
+	}
+	baseURL, apiKey := account.OpenAIResponsesCredentials()
+	account.Mu().RLock()
+	proxyURL := account.ProxyURL
+	account.Mu().RUnlock()
+	if proxyOverride != "" {
+		proxyURL = proxyOverride
+	}
+	if baseURL == "" || apiKey == "" {
+		return nil, ErrNoAvailableAccount()
+	}
+
+	endpoint := auth.OpenAIResponsesEndpoint(baseURL, "/v1/sub2api/billing")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, ErrInternalError("创建倍率探测请求失败", err)
+	}
+	applyOpenAIResponsesRequestHeaders(req, account, apiKey, nil)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Del("Content-Type")
+
+	resp, err := getPooledClient(account, proxyURL).Do(req)
+	if err != nil {
+		if shouldRecyclePooledClient(err) {
+			recyclePooledClient(account, proxyURL)
+		}
+		return nil, ErrUpstream(0, "请求上游倍率接口失败", err)
+	}
+	return resp, nil
+}
+
 func openAIResponsesCodexMetadataCapabilityKey(account *auth.Account, baseURL string) string {
 	accountID := int64(0)
 	if account != nil {
