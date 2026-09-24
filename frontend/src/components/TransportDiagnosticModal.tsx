@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Copy, FileJson, FileText, Network, ShieldCheck } from 'lucide-react'
+import { Check, Copy, FileJson, FileText, Network, ShieldAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { CodexTransportDiagnostic, CodexTransportDiagnosticResponse } from '../types'
 import { formatDiagnosticBody, sortedDiagnosticHeaders } from '../lib/transportDiagnostic'
@@ -94,7 +94,7 @@ function CaptureView({ capture }: { capture: CodexTransportDiagnostic }) {
         {capture.proxy ? <span className="max-w-full break-all font-mono text-[10px] text-muted-foreground">proxy {capture.proxy}</span> : null}
         {capture.method || capture.url ? <span className="min-w-0 break-all font-mono text-[11px]">{[capture.method, capture.url].filter(Boolean).join(' ')}</span> : null}
         {capture.upstream_request_id ? <span className="max-w-full break-all font-mono text-[10px] text-muted-foreground">upstream {capture.upstream_request_id}</span> : null}
-        <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400"><ShieldCheck className="size-3" />{t('diagnostics.redacted')}</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400"><ShieldAlert className="size-3" />{t('diagnostics.sensitive')}</span>
       </div>
       {capture.error ? <div className="rounded-xl border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-700 dark:text-red-300">{capture.error}</div> : null}
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">

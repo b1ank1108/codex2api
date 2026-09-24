@@ -8410,7 +8410,7 @@ func (h *Handler) GetUsageLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, usageLogsResponse{Logs: logs})
 }
 
-// GetUsageLogDiagnostic returns administrator-only, redacted transport captures.
+// GetUsageLogDiagnostic returns administrator-only, opt-in raw transport captures.
 func (h *Handler) GetUsageLogDiagnostic(c *gin.Context) {
 	requestID := strings.TrimSpace(c.Param("request_id"))
 	if requestID == "" || len(requestID) > 160 {

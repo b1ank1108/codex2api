@@ -9,7 +9,7 @@ import (
 
 var codexTransportDiagnosticInsertCount atomic.Uint64
 
-// InsertCodexTransportDiagnostic persists one already-redacted transport capture.
+// InsertCodexTransportDiagnostic persists one opt-in raw transport capture.
 // The write is asynchronous so diagnostics never add database latency to a relay.
 func (db *DB) InsertCodexTransportDiagnostic(payload []byte) {
 	if db == nil || len(payload) == 0 {

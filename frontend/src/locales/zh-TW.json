@@ -453,7 +453,7 @@
   },
   "settings": {
     "codexDiagnosticCapture": "詳細請求與回應診斷",
-    "codexDiagnosticCaptureDesc": "記錄 Codex 上游 HTTP/WebSocket 的請求標頭、請求內容、回應標頭與回應內容，供管理員在用量記錄中排查。預設關閉；敏感欄位入庫前會遮罩，單段最多保留 2 MiB，記錄保留 7 天。",
+    "codexDiagnosticCaptureDesc": "記錄 Codex 上游 HTTP/WebSocket 的完整請求標頭、請求內容、回應標頭與回應內容，供管理員在用量記錄中排查。預設關閉；Authorization、Cookie、Token、UUID 和代理認證等敏感資料會原樣入庫。單段最多保留 2 MiB，記錄保留 7 天；排查結束後請立即關閉並清空用量記錄。",
     "codexOAuthKeepalive": "惰性模式下保持 Codex 授權",
     "codexOAuthKeepaliveDesc": "開啟後，惰性模式仍會為即將到期的 Codex Token 續期，包括額度冷卻中的帳號；不會解除冷卻或發送生成請求。預設關閉。",
     "codexTelemetry": "用戶端遙測（實驗性）",
@@ -1528,7 +1528,7 @@
     "emptyHeaders": "沒有記錄標頭資訊",
     "emptyBody": "沒有記錄內容",
     "truncated": "已截斷",
-    "redacted": "敏感欄位已遮罩",
+    "sensitive": "包含完整敏感資料",
     "noCapture": "這筆請求沒有可用的診斷記錄",
     "captureDisabled": "詳細診斷目前未啟用；啟用後產生的新請求才會被記錄",
     "attempt": "嘗試 {{index}}",

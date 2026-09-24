@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +15,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/codex2api/auth"
-	"github.com/codex2api/security"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -87,89 +85,15 @@ func emitCodexTransportDiagnostic(ctx context.Context, record codexTransportDiag
 	}
 }
 
-func redactDiagnosticHeaders(headers http.Header) http.Header {
+func cloneDiagnosticHeaders(headers http.Header) http.Header {
 	if len(headers) == 0 {
 		return nil
 	}
-	result := make(http.Header, len(headers))
-	for name, values := range headers {
-		key := http.CanonicalHeaderKey(name)
-		if diagnosticSecretKey(name) {
-			result[key] = []string{"[REDACTED]"}
-			continue
-		}
-		result[key] = make([]string, len(values))
-		for i, value := range values {
-			result[key][i] = security.MaskSensitiveData(value)
-		}
-	}
-	return result
-}
-
-func diagnosticSecretKey(key string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "-", "_"))
-	switch normalized {
-	case "authorization", "proxy_authorization", "cookie", "set_cookie", "api_key", "apikey", "password", "secret", "client_secret", "session_key", "access_token", "refresh_token", "id_token":
-		return true
-	}
-	return strings.HasSuffix(normalized, "_token") ||
-		strings.HasSuffix(normalized, "_secret") ||
-		strings.HasSuffix(normalized, "_password") ||
-		strings.HasSuffix(normalized, "_api_key") ||
-		strings.Contains(normalized, "credential") ||
-		strings.Contains(normalized, "attestation")
+	return headers.Clone()
 }
 
 func isCodexTransportDiagnosticAccount(account *auth.Account) bool {
 	return account != nil && !account.IsRelayStyle()
-}
-
-func redactDiagnosticJSON(value interface{}) interface{} {
-	switch typed := value.(type) {
-	case map[string]interface{}:
-		for key, item := range typed {
-			if diagnosticSecretKey(key) || strings.HasSuffix(strings.ToLower(strings.ReplaceAll(key, "-", "_")), "_key") {
-				typed[key] = "[REDACTED]"
-				continue
-			}
-			typed[key] = redactDiagnosticJSON(item)
-		}
-	case []interface{}:
-		for i, item := range typed {
-			typed[i] = redactDiagnosticJSON(item)
-		}
-	}
-	return value
-}
-
-func redactDiagnosticTextFrames(input string) string {
-	lines := strings.Split(input, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		prefix := ""
-		candidate := trimmed
-		if strings.HasPrefix(candidate, "data:") {
-			prefix = line[:strings.Index(line, "data:")+len("data:")]
-			candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "data:"))
-		}
-		if candidate == "" || candidate == "[DONE]" {
-			continue
-		}
-		var value interface{}
-		if json.Unmarshal([]byte(candidate), &value) != nil {
-			continue
-		}
-		redacted, err := json.Marshal(redactDiagnosticJSON(value))
-		if err != nil {
-			continue
-		}
-		if prefix != "" {
-			lines[i] = prefix + " " + string(redacted)
-		} else {
-			lines[i] = string(redacted)
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 func diagnosticBody(body []byte) (text, hash string, truncated bool) {
@@ -181,15 +105,7 @@ func diagnosticBody(body []byte) (text, hash string, truncated bool) {
 	if !utf8.Valid(body) {
 		return "[binary body omitted]", hash, len(body) > codexDiagnosticBodyLimit
 	}
-	var value interface{}
-	if json.Unmarshal(body, &value) == nil {
-		if redacted, err := json.Marshal(redactDiagnosticJSON(value)); err == nil {
-			text = string(redacted)
-		}
-	}
-	if text == "" {
-		text = redactDiagnosticTextFrames(security.MaskSensitiveData(string(body)))
-	}
+	text = string(body)
 	if len(text) > codexDiagnosticBodyLimit {
 		captured := []byte(text[:codexDiagnosticBodyLimit])
 		for len(captured) > 0 && !utf8.Valid(captured) {
@@ -227,30 +143,6 @@ func diagnosticRequestBody(req *http.Request) []byte {
 	return data
 }
 
-func diagnosticURL(input *url.URL) string {
-	if input == nil {
-		return ""
-	}
-	copyURL := *input
-	copyURL.User = nil
-	query := copyURL.Query()
-	for key := range query {
-		if diagnosticSecretKey(key) || strings.HasSuffix(strings.ToLower(key), "_key") {
-			query.Set(key, "[REDACTED]")
-		}
-	}
-	copyURL.RawQuery = query.Encode()
-	return copyURL.String()
-}
-
-func diagnosticProxyURL(raw string) string {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return security.MaskSensitiveData(raw)
-	}
-	return parsed.Scheme + "://" + parsed.Host
-}
-
 func captureCodexHTTPResponse(ctx context.Context, req *http.Request, resp *http.Response, account *auth.Account, proxyURL, stage string, responseBody []byte, responseBodyTruncated bool, requestErr error) {
 	if !CodexDiagnosticCaptureEnabled() || req == nil {
 		return
@@ -259,8 +151,8 @@ func captureCodexHTTPResponse(ctx context.Context, req *http.Request, resp *http
 	responseText, responseHash, responseTruncated := diagnosticBody(responseBody)
 	responseTruncated = responseTruncated || responseBodyTruncated
 	record := codexTransportDiagnostic{
-		Transport: "http", Stage: stage, Method: req.Method, URL: diagnosticURL(req.URL), Proxy: diagnosticProxyURL(proxyURL),
-		RequestHeaders: redactDiagnosticHeaders(req.Header), RequestBody: requestText, RequestSHA256: requestHash, RequestTruncated: requestTruncated,
+		Transport: "http", Stage: stage, Method: req.Method, URL: req.URL.String(), Proxy: proxyURL,
+		RequestHeaders: cloneDiagnosticHeaders(req.Header), RequestBody: requestText, RequestSHA256: requestHash, RequestTruncated: requestTruncated,
 		ResponseBody: responseText, ResponseSHA256: responseHash, ResponseTruncated: responseTruncated,
 	}
 	if account != nil {
@@ -268,10 +160,10 @@ func captureCodexHTTPResponse(ctx context.Context, req *http.Request, resp *http
 	}
 	if resp != nil {
 		record.Status = resp.StatusCode
-		record.ResponseHeaders = redactDiagnosticHeaders(resp.Header)
+		record.ResponseHeaders = cloneDiagnosticHeaders(resp.Header)
 	}
 	if requestErr != nil {
-		record.Error = security.MaskSensitiveData(requestErr.Error())
+		record.Error = requestErr.Error()
 	}
 	emitCodexTransportDiagnostic(ctx, record)
 }
@@ -331,8 +223,8 @@ func CaptureCodexWebsocketDiagnostic(ctx context.Context, account *auth.Account,
 	responseText, responseHash, responseTruncated := diagnosticBody(responseBody)
 	responseTruncated = responseTruncated || responseBodyTruncated
 	record := codexTransportDiagnostic{
-		Transport: "websocket", Stage: stage, Status: status, Proxy: diagnosticProxyURL(proxyURL),
-		RequestHeaders: redactDiagnosticHeaders(requestHeaders), ResponseHeaders: redactDiagnosticHeaders(responseHeaders),
+		Transport: "websocket", Stage: stage, Status: status, Proxy: proxyURL,
+		RequestHeaders: cloneDiagnosticHeaders(requestHeaders), ResponseHeaders: cloneDiagnosticHeaders(responseHeaders),
 		RequestBody: requestText, ResponseBody: responseText, RequestSHA256: requestHash, ResponseSHA256: responseHash,
 		RequestTruncated: requestTruncated, ResponseTruncated: responseTruncated,
 	}
@@ -340,7 +232,7 @@ func CaptureCodexWebsocketDiagnostic(ctx context.Context, account *auth.Account,
 		record.AccountID = account.ID()
 	}
 	if captureErr != nil {
-		record.Error = security.MaskSensitiveData(captureErr.Error())
+		record.Error = captureErr.Error()
 	}
 	emitCodexTransportDiagnostic(ctx, record)
 }
