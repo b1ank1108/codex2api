@@ -165,6 +165,16 @@ func doTracedUpstreamRequest(client *http.Client, req *http.Request, account *au
 	record := beginUpstreamTrace(req.Context(), account, proxyURL, false)
 	resp, err := client.Do(req)
 	record(resp)
+	if CodexDiagnosticCaptureEnabled() && isCodexTransportDiagnosticAccount(account) {
+		if err != nil {
+			captureCodexHTTPResponse(req.Context(), req, resp, account, proxyURL, "request_error", nil, false, err)
+		} else if resp != nil && resp.Body != nil {
+			resp.Body = &codexDiagnosticHTTPBody{
+				base: resp.Body, ctx: req.Context(), req: req, resp: resp,
+				account: account, proxyURL: proxyURL,
+			}
+		}
+	}
 	return resp, err
 }
 

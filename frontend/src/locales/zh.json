@@ -2440,6 +2440,21 @@
     "reason5hUrgency": "5h 快重置",
     "reason7dUrgency": "7d 快重置"
   },
+  "diagnostics": {
+    "title": "请求与响应详情",
+    "requestHeaders": "请求头",
+    "requestBody": "请求体",
+    "responseHeaders": "响应头",
+    "responseBody": "响应体",
+    "emptyHeaders": "没有记录头信息",
+    "emptyBody": "没有记录正文",
+    "truncated": "已截断",
+    "redacted": "敏感字段已脱敏",
+    "noCapture": "这条请求没有可用的诊断记录",
+    "captureDisabled": "详细诊断当前未启用；开启后产生的新请求才会被记录",
+    "attempt": "尝试 {{index}}",
+    "view": "查看请求与响应详情"
+  },
   "usage": {
     "usageAnalysis": "用量分析",
     "imageInputTokens": "图片输入 token",
@@ -4353,6 +4368,8 @@
     "codexForceWebsocketDesc": "启用后，对 Codex 上游的请求将走 WebSocket 长连接（复用连接池），减少每次请求的 TLS/连接握手开销，更接近官方 CLI 体验。默认关闭，关闭时走原有 HTTP 请求。",
     "codexRequestCompression": "Codex HTTP 请求体压缩",
     "codexRequestCompressionDesc": "对走 HTTP 路径的 Codex /responses 请求体做 zstd 压缩（Content-Encoding: zstd），与真实 Codex CLI 的默认行为一致——它对 ChatGPT 后端本来就压，不压反而是可被识别的特征。默认开启。与上面的强制 WebSocket 互不影响：WebSocket 走 permessage-deflate 压缩，本项只作用于 HTTP 路径（大请求 1009 降级、生图、Agent Identity 账号），无需为了压缩关闭 WebSocket。",
+    "codexDiagnosticCapture": "详细请求与响应诊断",
+    "codexDiagnosticCaptureDesc": "记录 Codex 上游 HTTP/WebSocket 的请求头、请求体、响应头和响应体，供管理员在用量记录中排查。默认关闭；敏感字段入库前脱敏，单段最多保留 2 MiB，记录保留 7 天。",
     "codexWSWeakNetworkMode": "WS 弱网模式",
     "codexWSWeakNetworkModeDesc": "适用于 VPN、住宅代理等不稳定链路：连接空闲 15 秒或使用 3 分钟后轮换，每次复用都等待真实 Ping/Pong。启用时暂停空闲连接保活，默认关闭。",
     "codexWSKeepaliveEnabled": "WS 连接保活",

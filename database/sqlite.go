@@ -273,6 +273,14 @@ func (db *DB) migrateSQLite(ctx context.Context) error {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (account_id, model)
 		);`,
+		`CREATE TABLE IF NOT EXISTS codex_transport_diagnostics (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			request_id TEXT NOT NULL,
+			captured_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			transport TEXT NOT NULL DEFAULT '',
+			payload TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_codex_transport_diagnostics_request_id ON codex_transport_diagnostics(request_id);`,
 		`CREATE TABLE IF NOT EXISTS system_settings (
 					id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
 					site_name TEXT DEFAULT 'CodexProxy',
@@ -653,6 +661,7 @@ func (db *DB) migrateSQLite(ctx context.Context) error {
 		{"system_settings", "fast_scheduler_enabled", "INTEGER DEFAULT 0"},
 		{"system_settings", "scheduler_engine", "TEXT DEFAULT ''"},
 		{"system_settings", "codex_force_websocket", "INTEGER DEFAULT 0"},
+		{"system_settings", "codex_diagnostic_capture_enabled", "INTEGER DEFAULT 0"},
 		{"system_settings", "codex_telemetry_enabled", "INTEGER DEFAULT 0"},
 		{"system_settings", "codex_turn_state_template_cache_enabled", "INTEGER DEFAULT 0"},
 		{"system_settings", "codex_turn_state_account_mode", "TEXT DEFAULT 'auto'"},

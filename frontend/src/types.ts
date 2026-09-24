@@ -2057,6 +2057,7 @@ export interface SystemSettings {
   codex_telemetry_enabled: boolean
   codex_telemetry_timing_debug: boolean
   codex_request_compression: boolean
+  codex_diagnostic_capture_enabled: boolean
   codex_ws_weak_network_mode: boolean
   codex_ws_keepalive_enabled: boolean
   codex_ws_keepalive_interval_sec: number
@@ -3518,6 +3519,34 @@ export interface UsageLog {
 }
 
 export type UsageLogsResponse = ApiListResponse<'logs', UsageLog>
+
+export interface CodexTransportDiagnostic {
+  captured_at: ISODateString
+  transport: 'http' | 'websocket' | string
+  stage: string
+  status?: number
+  account_id?: number
+  method?: string
+  url?: string
+  proxy?: string
+  request_id: string
+  upstream_request_id?: string
+  request_headers?: Record<string, string[]>
+  response_headers?: Record<string, string[]>
+  request_body?: string
+  response_body?: string
+  request_sha256?: string
+  response_sha256?: string
+  request_truncated?: boolean
+  response_truncated?: boolean
+  error?: string
+}
+
+export interface CodexTransportDiagnosticResponse {
+  request_id: string
+  enabled: boolean
+  captures: CodexTransportDiagnostic[]
+}
 
 export interface UsageLogsPagedResponse {
   logs: UsageLog[]

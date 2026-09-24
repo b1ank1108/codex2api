@@ -452,6 +452,8 @@
     "proxyPoolLinkedHint": "已關聯代理池節點（按位址綁定）：在「代理」頁修改該節點位址會同步到所有綁定帳號，刪除則自動解除綁定。"
   },
   "settings": {
+    "codexDiagnosticCapture": "詳細請求與回應診斷",
+    "codexDiagnosticCaptureDesc": "記錄 Codex 上游 HTTP/WebSocket 的請求標頭、請求內容、回應標頭與回應內容，供管理員在用量記錄中排查。預設關閉；敏感欄位入庫前會遮罩，單段最多保留 2 MiB，記錄保留 7 天。",
     "codexOAuthKeepalive": "惰性模式下保持 Codex 授權",
     "codexOAuthKeepaliveDesc": "開啟後，惰性模式仍會為即將到期的 Codex Token 續期，包括額度冷卻中的帳號；不會解除冷卻或發送生成請求。預設關閉。",
     "codexTelemetry": "用戶端遙測（實驗性）",
@@ -1516,6 +1518,21 @@
     "cyberRiskSubjects": "關聯人員畫像",
     "cyberRiskSubjectsEmpty": "該 CY 尚未關聯到任何畫像主體（風險畫像可能仍在背景產生）",
     "cyberRiskSubjectEvents": "{{count}} 筆事件"
+  },
+  "diagnostics": {
+    "title": "請求與回應詳情",
+    "requestHeaders": "請求標頭",
+    "requestBody": "請求內容",
+    "responseHeaders": "回應標頭",
+    "responseBody": "回應內容",
+    "emptyHeaders": "沒有記錄標頭資訊",
+    "emptyBody": "沒有記錄內容",
+    "truncated": "已截斷",
+    "redacted": "敏感欄位已遮罩",
+    "noCapture": "這筆請求沒有可用的診斷記錄",
+    "captureDisabled": "詳細診斷目前未啟用；啟用後產生的新請求才會被記錄",
+    "attempt": "嘗試 {{index}}",
+    "view": "查看請求與回應詳情"
   },
   "usage": {
     "usageAnalysis": "用量分析",

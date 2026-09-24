@@ -2202,6 +2202,7 @@ export default function Settings() {
     codex_telemetry_enabled: false,
     codex_telemetry_timing_debug: false,
     codex_request_compression: true,
+    codex_diagnostic_capture_enabled: false,
     codex_ws_weak_network_mode: false,
     codex_ws_keepalive_enabled: false,
     codex_ws_keepalive_interval_sec: 60,
@@ -3612,6 +3613,12 @@ export default function Settings() {
                       <Switch
                         checked={settingsForm.codex_request_compression}
                         onCheckedChange={(checked) => autoSaveBooleanField('codex_request_compression', checked)}
+                      />
+                    </SettingField>
+                    <SettingField label={t('settings.codexDiagnosticCapture')} description={t('settings.codexDiagnosticCaptureDesc')} layout="switch">
+                      <Switch
+                        checked={settingsForm.codex_diagnostic_capture_enabled}
+                        onCheckedChange={(checked) => autoSaveBooleanField('codex_diagnostic_capture_enabled', checked)}
                       />
                     </SettingField>
                     <SettingField label={t('settings.codexWSWeakNetworkMode')} description={t('settings.codexWSWeakNetworkModeDesc')} layout="switch">

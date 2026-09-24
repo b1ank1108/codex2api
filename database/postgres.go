@@ -1289,6 +1289,15 @@ func (db *DB) migrate(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_usage_logs_api_key_created_at ON usage_logs(api_key_id, created_at);
 	CREATE INDEX IF NOT EXISTS idx_usage_logs_channel_created_at ON usage_logs(channel, created_at);
 
+	CREATE TABLE IF NOT EXISTS codex_transport_diagnostics (
+		id BIGSERIAL PRIMARY KEY,
+		request_id TEXT NOT NULL,
+		captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		transport TEXT NOT NULL DEFAULT '',
+		payload JSONB NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_codex_transport_diagnostics_request_id ON codex_transport_diagnostics(request_id);
+
 	CREATE TABLE IF NOT EXISTS api_keys (
 		id         SERIAL PRIMARY KEY,
 		name       VARCHAR(255) DEFAULT '',
@@ -1485,6 +1494,7 @@ func (db *DB) migrate(ctx context.Context) error {
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS public_account_portal_page_enabled BOOLEAN DEFAULT FALSE;
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_force_websocket BOOLEAN DEFAULT FALSE;
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_request_compression BOOLEAN DEFAULT TRUE;
+	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_diagnostic_capture_enabled BOOLEAN DEFAULT FALSE;
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_ws_weak_network_mode BOOLEAN DEFAULT FALSE;
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_ws_keepalive_enabled BOOLEAN DEFAULT FALSE;
 	ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS codex_ws_keepalive_interval_sec INT DEFAULT 60;
@@ -2420,6 +2430,7 @@ type SystemSettings struct {
 	PublicAccountPortalPageEnabled     bool // 账号自助添加公开门户开关，默认 false
 	CodexForceWebsocket                bool // 强制 Codex 上游走 WebSocket（复用连接池），默认 false
 	CodexRequestCompression            bool // HTTP /responses 请求体 zstd 压缩（对齐真实客户端），默认 true
+	CodexDiagnosticCaptureEnabled      bool // 管理员显式开启后保存脱敏的 HTTP/WS 请求与响应诊断
 	CodexWSWeakNetworkMode             bool // WS 弱网保守复用模式，默认 false
 	CodexWSKeepaliveEnabled            bool // 启用上游 WS 空闲连接保活（仅 Ping，不发业务帧），默认 false
 	CodexWSKeepaliveIntervalSec        int  // WS 保活 Ping 间隔（秒），默认 60
@@ -2800,6 +2811,9 @@ func (db *DB) GetSystemSettings(ctx context.Context) (*SystemSettings, error) {
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
+	}
+	if err == nil {
+		db.loadCodexDiagnosticCaptureSetting(ctx, s)
 	}
 	s.SiteName = NormalizeSiteName(s.SiteName)
 	s.SiteLogo = strings.TrimSpace(s.SiteLogo)
@@ -3233,7 +3247,10 @@ func (db *DB) UpdateSystemSettings(ctx context.Context, s *SystemSettings) error
 		s.CodexTelemetryTimingDebug,
 		s.PreservePromptFilterCustomPatterns,
 		s.PreservePromptFilterReviewAPIKey)
-	return err
+	if err != nil {
+		return err
+	}
+	return db.saveCodexDiagnosticCaptureSetting(ctx, s.CodexDiagnosticCaptureEnabled)
 }
 
 // UpdateCodexSyncedCLIVersion 只更新后台同步得到的 Codex CLI 版本，避免用

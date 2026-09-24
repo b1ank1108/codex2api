@@ -3595,6 +3595,7 @@ type Store struct {
 	// codexRequestCompression HTTP /responses 请求体 zstd 压缩，默认开启（对齐真实客户端）。
 	// 与上面几项 WS 设置正交：WS 走 permessage-deflate，本项只作用于 HTTP 路径。
 	codexRequestCompression     atomic.Bool
+	codexDiagnosticCapture      atomic.Bool
 	codexWSKeepaliveEnabled     atomic.Bool  // 启用上游 WS 空闲连接保活（仅 Ping）
 	codexWSKeepaliveIntervalSec atomic.Int64 // WS 保活 Ping 间隔（秒），默认 60
 	codexWSHideUpstreamErrors   atomic.Bool  // 隐藏上游 WS 原始错误，默认开启
@@ -4223,6 +4224,7 @@ func NewStore(db *database.DB, tc cache.TokenCache, settings *database.SystemSet
 		oauthRefreshLocks:          make(map[string]*oauthRefreshLocalLock),
 	}
 	s.codexRequestCompression.Store(settings.CodexRequestCompression)
+	s.codexDiagnosticCapture.Store(settings.CodexDiagnosticCaptureEnabled)
 	s.availability.Store(newAvailabilityHub())
 	s.publishAccountSnapshot(nil)
 	s.sessionSlotBufferEnabled.Store(settings.SessionSlotBufferEnabled)
@@ -4305,6 +4307,7 @@ func NewStore(db *database.DB, tc cache.TokenCache, settings *database.SystemSet
 	// Codex 上游 WebSocket 相关设置（默认关闭，不影响现有路径）
 	s.codexForceWebsocket.Store(settings.CodexForceWebsocket)
 	s.codexRequestCompression.Store(settings.CodexRequestCompression)
+	s.codexDiagnosticCapture.Store(settings.CodexDiagnosticCaptureEnabled)
 	s.codexWSKeepaliveEnabled.Store(settings.CodexWSKeepaliveEnabled)
 	s.codexWSKeepaliveIntervalSec.Store(normalizeWSKeepaliveInterval(settings.CodexWSKeepaliveIntervalSec))
 	s.codexWSHideUpstreamErrors.Store(settings.CodexWSHideUpstreamErrors)
@@ -4511,6 +4514,16 @@ func (s *Store) CodexRequestCompression() bool {
 		return true
 	}
 	return s.codexRequestCompression.Load()
+}
+
+func (s *Store) SetCodexDiagnosticCaptureEnabled(enabled bool) {
+	if s != nil {
+		s.codexDiagnosticCapture.Store(enabled)
+	}
+}
+
+func (s *Store) CodexDiagnosticCaptureEnabled() bool {
+	return s != nil && s.codexDiagnosticCapture.Load()
 }
 
 // SetCodexWSKeepaliveEnabled 设置上游 WS 空闲连接保活开关（运行时热更新）。

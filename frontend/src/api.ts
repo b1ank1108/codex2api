@@ -1176,6 +1176,8 @@ export const api = {
     const searchParams = buildUsageLogSearchParams(params)
     return request<OpsErrorSummary>(`/usage/logs/error-summary?${searchParams.toString()}`)
   },
+  getUsageLogDiagnostic: (requestID: string) =>
+    request<import('./types').CodexTransportDiagnosticResponse>(`/usage/logs/diagnostic/${encodeURIComponent(requestID)}`),
   getChartData: (params: {
     start: string
     end: string

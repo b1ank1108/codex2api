@@ -12,13 +12,14 @@ import ChannelLogo from '../components/ChannelLogo'
 import CompactionBadges from '../components/CompactionBadges'
 import ModelLogo from '../components/ModelLogo'
 import Modal from '../components/Modal'
+import TransportDiagnosticModal from '../components/TransportDiagnosticModal'
 import ColumnSettingsMenu from '../components/ColumnSettingsMenu'
 import StateShell from '../components/StateShell'
 import { useDataLoader } from '../hooks/useDataLoader'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useToast } from '../hooks/useToast'
 import { DEFAULT_PAGE_SIZE_OPTIONS, usePersistedPageSize } from '../hooks/usePersistedPageSize'
-import type { APIKeyRow, OpsErrorSummary, SystemSettings, UsageAPIKeyStat, UsageEndpointStat, UsageFeatureStats, UsageLog, UsageModelStat, UsageStats, PromptFilterLog, PromptPolicyIncidentDetailResponse } from '../types'
+import type { APIKeyRow, CodexTransportDiagnosticResponse, OpsErrorSummary, SystemSettings, UsageAPIKeyStat, UsageEndpointStat, UsageFeatureStats, UsageLog, UsageModelStat, UsageStats, PromptFilterLog, PromptPolicyIncidentDetailResponse } from '../types'
 import { cn, formatCompactEmail } from '../lib/utils'
 import { formatUsageNumber as formatTokens } from '../lib/usageFormat'
 import { buildModelShareData, formatSharePercent, type ModelShareMetric } from '../lib/usageInsights'
@@ -37,7 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Activity, Box, Clock, Zap, Sparkles, AlertTriangle, Search, Brain, DatabaseZap, DatabaseBackup, X, Image as ImageIcon, Info, CircleDollarSign, BarChart3, KeyRound, Route, SlidersHorizontal, ShieldAlert, RefreshCw, ChevronDown, RotateCcw, PlugZap, FlaskConical } from 'lucide-react'
+import { Activity, Box, Clock, Zap, Sparkles, AlertTriangle, Search, Brain, DatabaseZap, DatabaseBackup, X, Image as ImageIcon, Info, CircleDollarSign, BarChart3, KeyRound, Route, SlidersHorizontal, ShieldAlert, RefreshCw, ChevronDown, RotateCcw, PlugZap, FlaskConical, FileSearch } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 
@@ -1689,6 +1690,10 @@ export default function Usage() {
   const [logs, setLogs] = useState<UsageLog[]>([])
   const [logsTotal, setLogsTotal] = useState(0)
   const [logsLoading, setLogsLoading] = useState(false)
+  const [diagnosticRequestID, setDiagnosticRequestID] = useState<string | null>(null)
+  const [diagnosticData, setDiagnosticData] = useState<CodexTransportDiagnosticResponse | null>(null)
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false)
+  const diagnosticLoadGeneration = useRef(0)
   const [errorSummary, setErrorSummary] = useState<OpsErrorSummary | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -1834,6 +1839,25 @@ export default function Usage() {
       setLogsLoading(false)
     }
   }, [buildLogFilterParams, page, pageSize])
+
+  const openDiagnostic = useCallback(async (requestID: string) => {
+    if (!requestID) return
+    const generation = ++diagnosticLoadGeneration.current
+    setDiagnosticRequestID(requestID)
+    setDiagnosticData(null)
+    setDiagnosticLoading(true)
+    try {
+      const data = await api.getUsageLogDiagnostic(requestID)
+      if (generation === diagnosticLoadGeneration.current) setDiagnosticData(data)
+    } catch (error) {
+      if (generation === diagnosticLoadGeneration.current) {
+        showToast(error instanceof Error ? error.message : t('common.error'), 'error')
+        setDiagnosticData({ request_id: requestID, enabled: true, captures: [] })
+      }
+    } finally {
+      if (generation === diagnosticLoadGeneration.current) setDiagnosticLoading(false)
+    }
+  }, [showToast, t])
 
   const loadErrorSummary = useCallback(async () => {
     try {
@@ -2675,7 +2699,16 @@ export default function Usage() {
                         )}
                       </div>
 
-                      {visibleColumns.error && <UsageErrorSummaryCell log={log} mobile />}
+                      {visibleColumns.error && (
+                        <div className="flex items-start gap-1.5">
+                          <div className="min-w-0 flex-1"><UsageErrorSummaryCell log={log} mobile /></div>
+                          {log.request_id ? (
+                            <Button type="button" size="icon" variant="ghost" className="size-7 shrink-0" title={t('diagnostics.view')} onClick={() => void openDiagnostic(log.request_id!)}>
+                              <FileSearch className="size-3.5" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      )}
 
                       {hasDetails && (
                         <div className="mt-2.5 space-y-1 text-xs text-muted-foreground">
@@ -2999,7 +3032,14 @@ export default function Usage() {
                           <UsageCostCell log={log} />
                         </TableCell>}
                         {visibleColumns.error && <TableCell>
-                          <UsageErrorSummaryCell log={log} />
+                          <div className="flex min-w-0 items-start gap-1.5">
+                            <div className="min-w-0 flex-1"><UsageErrorSummaryCell log={log} /></div>
+                            {log.request_id ? (
+                              <Button type="button" size="icon" variant="ghost" className="size-7 shrink-0" title={t('diagnostics.view')} onClick={() => void openDiagnostic(log.request_id!)}>
+                                <FileSearch className="size-3.5" />
+                              </Button>
+                            ) : null}
+                          </div>
                         </TableCell>}
                         {visibleColumns.time && <TableCell className={`${usageTableMonoClass} text-right whitespace-nowrap`}>
                           <UsageTimeCell value={log.created_at} />
@@ -3028,6 +3068,17 @@ export default function Usage() {
         </Card>
         </div>
 
+        <TransportDiagnosticModal
+          show={diagnosticRequestID !== null}
+          loading={diagnosticLoading}
+          data={diagnosticData ?? (diagnosticRequestID ? { request_id: diagnosticRequestID, enabled: true, captures: [] } : null)}
+          onClose={() => {
+            diagnosticLoadGeneration.current += 1
+            setDiagnosticRequestID(null)
+            setDiagnosticData(null)
+            setDiagnosticLoading(false)
+          }}
+        />
         {confirmDialog}
       </>
     </StateShell>

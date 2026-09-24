@@ -141,6 +141,7 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 	// Resin 模式下 WS 地址改写为反代路径,拨号侧(createConnection)同样按它跳过代理。
 	egress := proxy.ResolveCodexRequestEgress(ctx, account, wsURL, effectiveProxyURL(account, proxyOverride), true)
 	wsURL = egress.URL
+	diagnosticProxyURL := egress.DialProxyURL
 
 	// 准备请求头
 	// 跨账号回声守卫在握手头装配末尾剥离已知来自其他账号的 turn state。
@@ -158,6 +159,21 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 	proxy.RecordUpstreamUserAgent(ctx, headers.Get("User-Agent"))
 
 	egress.ApplyHeaders(headers)
+	captureFailure := func(stage string, connection *WsConnection, captureErr error) {
+		if captureErr == nil || !proxy.CodexDiagnosticCaptureEnabled() {
+			return
+		}
+		var responseHeaders http.Header
+		if connection != nil {
+			if handshake := connection.HTTPResponse(); handshake != nil {
+				responseHeaders = handshake.Header
+			}
+		}
+		proxy.CaptureCodexWebsocketDiagnostic(
+			ctx, account, wsBody, headers, responseHeaders, diagnosticProxyURL,
+			stage, 0, nil, false, captureErr,
+		)
+	}
 
 	// 获取或创建连接。无显式会话的请求（stateless 连接 ID）在确定性 cache key
 	// 的槽位池内复用连接，避免持续高 RPM 下逐请求握手触发上游限流。
@@ -212,6 +228,7 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 	// 取连耗时（busy 排队 + 探活 + 握手）计入本 attempt 的 ws_acquire_ms（issue #413）
 	proxy.AddWsAcquireDuration(ctx, time.Since(acquireStart))
 	if err2 != nil {
+		captureFailure("handshake_error", wc, err2)
 		return nil, err2
 	}
 	// AcquireConnection 可能按 busy overflow 策略落到 <lane>#ovf-N；
@@ -234,6 +251,9 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 		return nil, err
 	}
 	sendErr := e.sendRequest(wc, wsBody, pr.RequestID)
+	if sendErr != nil {
+		captureFailure("send_error", wc, sendErr)
+	}
 	for retries := 0; shouldRetryWebsocketSendError(sendErr) && retries < 2; retries++ {
 		wc.session.RemovePendingRequest(pr.RequestID)
 		e.manager.DiscardConnection(wc)
@@ -249,12 +269,16 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 		wc, pr, err2 = e.manager.AcquireConnection(ctx, account, wsURL, poolSessionID, headers, proxyOverride)
 		proxy.AddWsAcquireDuration(ctx, time.Since(reacquireStart))
 		if err2 != nil {
+			captureFailure("reconnect_error", wc, err2)
 			return nil, err2
 		}
 		if wc.upstreamUserAgentKnown {
 			proxy.RecordUpstreamUserAgent(ctx, wc.upstreamUserAgent)
 		}
 		sendErr = e.sendRequest(wc, wsBody, pr.RequestID)
+		if sendErr != nil {
+			captureFailure("send_error", wc, sendErr)
+		}
 	}
 	if sendErr != nil {
 		wc.session.RemovePendingRequest(pr.RequestID)
@@ -266,12 +290,16 @@ func (e *Executor) ExecuteRequestViaWebsocket(
 	e.manager.StartHeartbeat(wc)
 
 	return &WsResponse{
-		conn:        wc,
-		pendingReq:  pr,
-		sessionID:   poolSessionID,
-		manager:     e.manager,
-		apiKey:      apiKey,
-		readErrChan: make(chan error, 1),
+		conn:           wc,
+		pendingReq:     pr,
+		sessionID:      poolSessionID,
+		manager:        e.manager,
+		apiKey:         apiKey,
+		captureCtx:     ctx,
+		requestBody:    append([]byte(nil), wsBody...),
+		requestHeaders: headers.Clone(),
+		proxyURL:       diagnosticProxyURL,
+		readErrChan:    make(chan error, 1),
 	}, nil
 }
 
@@ -453,6 +481,14 @@ type WsResponse struct {
 	closed      bool
 	// apiKey 发起本请求的下游 API Key，用于 response_id → 连接绑定的归属校验。
 	apiKey string
+	// 诊断数据仅在管理员显式开启采集时写入，响应缓冲有严格大小上限。
+	captureCtx       context.Context
+	requestBody      []byte
+	requestHeaders   http.Header
+	proxyURL         string
+	captureResponse  bytes.Buffer
+	captureTruncated bool
+	captureOnce      sync.Once
 	// connBroken 标记读流因上游 WS 异常(非正常关闭)或下游写入失败而终止；
 	// Close() 据此销毁坏连接而非归还连接池复用。受 mu 保护。
 	connBroken bool
@@ -483,6 +519,7 @@ func (r *WsResponse) ReadStream(callback func(data []byte) bool) error {
 			// response terminal frame. Any socket close here, including 1000/1001,
 			// is premature and must preserve the real close error for the consumer.
 			r.markConnBroken()
+			r.captureWebsocketDiagnostic("read_error", 0, err)
 			return fmt.Errorf("websocket read error: %w", err)
 		}
 
@@ -515,9 +552,33 @@ func (r *WsResponse) ReadStream(callback func(data []byte) bool) error {
 
 // handleMessage 处理单条 WebSocket 消息
 func (r *WsResponse) handleMessage(payload []byte, callback func(data []byte) bool) error {
+	if proxy.CodexDiagnosticCaptureEnabled() {
+		const captureLimit = 2 << 20
+		r.mu.Lock()
+		remaining := captureLimit - r.captureResponse.Len()
+		if remaining > 0 {
+			writeCount := len(payload)
+			if writeCount >= remaining {
+				writeCount = remaining
+				r.captureTruncated = true
+			}
+			_, _ = r.captureResponse.Write(payload[:writeCount])
+			if writeCount < remaining {
+				_ = r.captureResponse.WriteByte('\n')
+			}
+		} else {
+			r.captureTruncated = true
+		}
+		r.mu.Unlock()
+	}
 	// 上游错误帧：透传给下游(转成 SSE 错误事件)，而不是转成 Go error 后静默关闭 pipe。
 	// 否则下游只会读到一个底层 read error → 表现为空响应，无从得知具体错误。
 	if errEvent, isErr := r.buildErrorEvent(payload); isErr {
+		status := int(gjson.GetBytes(payload, "status").Int())
+		if status == 0 {
+			status = int(gjson.GetBytes(payload, "status_code").Int())
+		}
+		r.captureWebsocketDiagnostic("error_frame", status, nil)
 		// 连接级寿命限制错误：针对连接而非单个请求，这条连接上的后续
 		// response.create 一律失败，而 Ping 探活仍会成功；归还池会持续毒害
 		// 后续请求（含续链亲和定向回来的），必须标记销毁 (issue #346)。
@@ -539,12 +600,14 @@ func (r *WsResponse) handleMessage(payload []byte, callback func(data []byte) bo
 		// 上游仍会在这条连接上继续推送本响应的剩余帧。连接必须销毁，
 		// 归还池中复用会把残留帧串给下一个请求(issue #308)。
 		r.markConnBroken()
+		r.captureWebsocketDiagnostic("downstream_closed", 0, errors.New("downstream closed before the upstream response completed"))
 		return io.EOF
 	}
 
 	// 检查是否是终止事件
 	eventType := gjson.GetBytes(payload, "type").String()
 	if eventType == "response.completed" || eventType == "response.failed" {
+		r.captureWebsocketDiagnostic("response_stream", http.StatusOK, nil)
 		// 续链亲和：记录本响应由哪条连接产出，后续带 previous_response_id 的
 		// 请求可回到原连接（上游无服务端存储时上下文只存活在连接内）。
 		if eventType == "response.completed" && r.manager != nil && r.conn != nil {
@@ -560,6 +623,30 @@ func (r *WsResponse) handleMessage(payload []byte, callback func(data []byte) bo
 	}
 
 	return nil
+}
+
+func (r *WsResponse) captureWebsocketDiagnostic(stage string, status int, captureErr error) {
+	if r == nil || !proxy.CodexDiagnosticCaptureEnabled() {
+		return
+	}
+	r.captureOnce.Do(func() {
+		var account *auth.Account
+		var responseHeaders http.Header
+		if r.conn != nil {
+			account = r.conn.account
+			if handshake := r.conn.HTTPResponse(); handshake != nil {
+				responseHeaders = handshake.Header
+			}
+		}
+		r.mu.Lock()
+		responseBody := append([]byte(nil), r.captureResponse.Bytes()...)
+		responseTruncated := r.captureTruncated
+		r.mu.Unlock()
+		proxy.CaptureCodexWebsocketDiagnostic(
+			r.captureCtx, account, r.requestBody, r.requestHeaders, responseHeaders,
+			r.proxyURL, stage, status, responseBody, responseTruncated, captureErr,
+		)
+	})
 }
 
 // buildErrorEvent 判断 payload 是否为上游错误帧；若是，返回一个下游可识别的
@@ -655,6 +742,7 @@ func (r *WsResponse) markStreamCompleted() {
 
 // Close 关闭响应并归还连接
 func (r *WsResponse) Close() error {
+	r.captureWebsocketDiagnostic("stream_closed", 0, nil)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

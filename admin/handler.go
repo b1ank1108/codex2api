@@ -1235,6 +1235,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	api.GET("/usage/api-keys", h.GetAPIKeyTokenStats)
 	api.GET("/usage/api-keys/:id/accounts", h.GetAPIKeyAccountStats)
 	api.GET("/usage/logs", h.GetUsageLogs)
+	api.GET("/usage/logs/diagnostic/:request_id", h.GetUsageLogDiagnostic)
 	api.GET("/usage/logs/error-summary", h.GetUsageLogsErrorSummary)
 	api.GET("/usage/chart-data", h.GetChartData)
 	api.DELETE("/usage/logs", h.ClearUsageLogs)
@@ -8409,12 +8410,37 @@ func (h *Handler) GetUsageLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, usageLogsResponse{Logs: logs})
 }
 
+// GetUsageLogDiagnostic returns administrator-only, redacted transport captures.
+func (h *Handler) GetUsageLogDiagnostic(c *gin.Context) {
+	requestID := strings.TrimSpace(c.Param("request_id"))
+	if requestID == "" || len(requestID) > 160 {
+		writeError(c, http.StatusBadRequest, "request_id 参数无效")
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	items, err := h.db.ListCodexTransportDiagnostics(ctx, requestID)
+	if err != nil {
+		writeInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"request_id": requestID,
+		"enabled":    h.store.CodexDiagnosticCaptureEnabled(),
+		"captures":   items,
+	})
+}
+
 // ClearUsageLogs 清空所有使用日志
 func (h *Handler) ClearUsageLogs(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
 	if err := h.db.ClearUsageLogs(ctx); err != nil {
+		writeInternalError(c, err)
+		return
+	}
+	if err := h.db.ClearCodexTransportDiagnostics(ctx); err != nil {
 		writeInternalError(c, err)
 		return
 	}
@@ -9159,6 +9185,7 @@ type settingsResponse struct {
 	SchedulerEngine                     string `json:"scheduler_engine"`
 	CodexForceWebsocket                 bool   `json:"codex_force_websocket"`
 	CodexRequestCompression             bool   `json:"codex_request_compression"`
+	CodexDiagnosticCaptureEnabled       bool   `json:"codex_diagnostic_capture_enabled"`
 	CodexWSWeakNetworkMode              bool   `json:"codex_ws_weak_network_mode"`
 	CodexWSKeepaliveEnabled             bool   `json:"codex_ws_keepalive_enabled"`
 	CodexWSKeepaliveIntervalSec         int    `json:"codex_ws_keepalive_interval_sec"`
@@ -9345,6 +9372,7 @@ type updateSettingsReq struct {
 	SchedulerEngine                     *string                          `json:"scheduler_engine"`
 	CodexForceWebsocket                 *bool                            `json:"codex_force_websocket"`
 	CodexRequestCompression             *bool                            `json:"codex_request_compression"`
+	CodexDiagnosticCaptureEnabled       *bool                            `json:"codex_diagnostic_capture_enabled"`
 	CodexWSWeakNetworkMode              *bool                            `json:"codex_ws_weak_network_mode"`
 	CodexWSKeepaliveEnabled             *bool                            `json:"codex_ws_keepalive_enabled"`
 	CodexWSKeepaliveIntervalSec         *int                             `json:"codex_ws_keepalive_interval_sec"`
@@ -10175,6 +10203,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 		SchedulerEngine:                     h.store.SchedulerEngine(),
 		CodexForceWebsocket:                 h.store.CodexForceWebsocket(),
 		CodexRequestCompression:             h.store.CodexRequestCompression(),
+		CodexDiagnosticCaptureEnabled:       h.store.CodexDiagnosticCaptureEnabled(),
 		CodexWSWeakNetworkMode:              runtimeCfg.CodexWSWeakNetworkMode,
 		CodexWSKeepaliveEnabled:             h.store.CodexWSKeepaliveEnabled(),
 		CodexWSKeepaliveIntervalSec:         h.store.CodexWSKeepaliveIntervalSec(),
@@ -10905,6 +10934,11 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		h.store.SetCodexRequestCompression(*req.CodexRequestCompression)
 		runtimeCfg.CodexRequestCompression = *req.CodexRequestCompression
 		log.Printf("设置已更新: codex_request_compression = %t", *req.CodexRequestCompression)
+	}
+	if req.CodexDiagnosticCaptureEnabled != nil {
+		h.store.SetCodexDiagnosticCaptureEnabled(*req.CodexDiagnosticCaptureEnabled)
+		proxy.SetCodexDiagnosticCaptureEnabled(*req.CodexDiagnosticCaptureEnabled)
+		log.Printf("设置已更新: codex_diagnostic_capture_enabled = %t", *req.CodexDiagnosticCaptureEnabled)
 	}
 
 	if req.CodexWSWeakNetworkMode != nil {
@@ -11692,6 +11726,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		SchedulerEngine:                     h.store.SchedulerEngine(),
 		CodexForceWebsocket:                 h.store.CodexForceWebsocket(),
 		CodexRequestCompression:             h.store.CodexRequestCompression(),
+		CodexDiagnosticCaptureEnabled:       h.store.CodexDiagnosticCaptureEnabled(),
 		CodexWSWeakNetworkMode:              runtimeCfg.CodexWSWeakNetworkMode,
 		CodexWSKeepaliveEnabled:             h.store.CodexWSKeepaliveEnabled(),
 		CodexWSKeepaliveIntervalSec:         h.store.CodexWSKeepaliveIntervalSec(),
@@ -12017,6 +12052,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		SchedulerEngine:                     h.store.SchedulerEngine(),
 		CodexForceWebsocket:                 h.store.CodexForceWebsocket(),
 		CodexRequestCompression:             h.store.CodexRequestCompression(),
+		CodexDiagnosticCaptureEnabled:       h.store.CodexDiagnosticCaptureEnabled(),
 		CodexWSWeakNetworkMode:              runtimeCfg.CodexWSWeakNetworkMode,
 		CodexWSKeepaliveEnabled:             h.store.CodexWSKeepaliveEnabled(),
 		CodexWSKeepaliveIntervalSec:         h.store.CodexWSKeepaliveIntervalSec(),
